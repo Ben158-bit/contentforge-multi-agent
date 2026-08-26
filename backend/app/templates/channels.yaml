@@ -1,0 +1,39 @@
+# 内容渠道模板：定义各渠道的文案风格、长度、结构与 SEO 要求。
+# 文案创作 Agent 依据渠道模板生成内容；审校 Agent 依据模板检查合规性。
+channels:
+  xiaohongshu:
+    name: 小红书
+    desc: 种草笔记（图文）
+    tone: 亲切口语化、有生活感、善用表情与语气词，像朋友分享
+    max_chars: 1200
+    structure: 爆款开头抓眼球 → 场景痛点共鸣 → 产品卖点展开 → 亲测体验 → 行动号召
+    require_hashtags: true
+    require_emoji: true
+    seo_keywords: 标题与正文自然植入搜索关键词
+  wechat:
+    name: 微信公众号
+    desc: 深度长文
+    tone: 专业可信、逻辑清晰、适度口语，观点有支撑
+    max_chars: 3000
+    structure: 引言抛出问题 → 观点展开 → 案例佐证 → 产品自然融入 → 总结升华与行动号召
+    require_hashtags: false
+    require_emoji: false
+    seo_keywords: 标题优化与文中关键词覆盖
+  weibo:
+    name: 微博
+    desc: 短平快动态
+    tone: 轻松有梗、直白有力、有网感
+    max_chars: 280
+    structure: 一句话钩子 → 核心信息 → 话题标签
+    require_hashtags: true
+    require_emoji: true
+    seo_keywords: 核心关键词前置
+  product_page:
+    name: 电商产品页
+    desc: 详情页文案
+    tone: 卖点导向、信任背书、行动驱动，突出差异化
+    max_chars: 1500
+    structure: 主标题 → 核心卖点3-5条 → 信任背书 → 规格说明 → 行动号召
+    require_hashtags: false
+    require_emoji: false
+    seo_keywords: 商品关键词覆盖与转化话术
