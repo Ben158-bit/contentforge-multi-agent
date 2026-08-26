@@ -18,6 +18,7 @@ backend/data/
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/*.tsbuildinfo
 
 # IDE / 系统
 .idea/
