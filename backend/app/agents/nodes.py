@@ -92,9 +92,58 @@ def _stage_node(
 
 # ===================== 节点工厂 =====================
 
-def make_research_node(llm: LLMClient) -> Callable:
-    """1. 市场调研 Agent。"""
-    return _stage_node("research", build_research_messages, llm, temperature=0.5)
+def _web_search_for_research(web_search, state: AgentState) -> list:
+    """为调研节点构造搜索 query 并检索（失败自动降级为空列表）。"""
+    if web_search is None or not getattr(web_search, "available", False):
+        return []
+    inp = state["input"]
+    topic = inp.get("topic", "")
+    brand = inp.get("brand_name", "")
+    queries = [topic]
+    if brand and brand not in topic:
+        queries.append(f"{topic} {brand}")
+    queries.append(f"{topic} 行业趋势 市场")
+    results: list = []
+    for q in queries[:2]:
+        try:
+            results.extend(web_search.search(q, max_results=4))
+        except Exception:
+            logger.warning("联网搜索失败，调研降级为模型内部知识: %s", q, exc_info=True)
+            break
+    # 按 URL 去重，最多保留 8 条
+    seen: set[str] = set()
+    dedup = []
+    for r in results:
+        if r.url not in seen:
+            seen.add(r.url)
+            dedup.append(r)
+    logger.info("调研联网检索完成，%d 条来源", len(dedup))
+    return dedup[:8]
+
+
+def make_research_node(llm: LLMClient, web_search=None) -> Callable:
+    """1. 市场调研 Agent（支持联网检索，无 key 自动降级）。"""
+
+    def node(state: AgentState) -> dict:
+        results = _web_search_for_research(web_search, state)
+        messages = build_research_messages(state, results)
+        result = llm.chat(messages, json_mode=True, temperature=0.5)
+        output = _safe_json(result.content)
+        # 兜底：即使 LLM 未输出 sources，也附上检索来源（保证可溯源）
+        if results and not output.get("sources"):
+            output["sources"] = [
+                {"title": r.title, "url": r.url} for r in results[:5]
+            ]
+        logger.info("阶段[research]完成 (tokens=%s, %.2fs, sources=%d)",
+                    result.total_tokens, result.latency_seconds,
+                    len(output.get("sources", [])))
+        return {
+            "research": output,
+            "stage_status": {"research": "completed"},
+            **_accumulate(state, result),
+        }
+
+    return node
 
 
 def make_competitor_node(llm: LLMClient) -> Callable:

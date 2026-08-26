@@ -111,6 +111,24 @@ export default function TaskDetail({ taskId }: Props) {
     if (!out || Object.keys(out).length === 0) {
       return <p className="muted">暂无产出</p>
     }
+    // 调研阶段：展示联网检索来源（可溯源）
+    if (stage.stage_key === 'research' && Array.isArray(out.sources) && out.sources.length > 0) {
+      const sources = out.sources as { title?: string; url?: string }[]
+      return (
+        <div>
+          <p className="muted research-summary">📎 依据 {sources.length} 个联网来源</p>
+          <ul className="kv-list">
+            {sources.slice(0, 5).map((s, i) => (
+              <li key={i}>
+                <a href={s.url} target="_blank" rel="noreferrer" className="source-link">
+                  {s.title || s.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )
+    }
     if (stage.stage_key === 'copywriting') {
       const list = Array.isArray(out.variants) ? (out.variants as CopyVariant[]) : []
       return (

@@ -1,5 +1,6 @@
 # 内容渠道模板：定义各渠道的文案风格、长度、结构与 SEO 要求。
 # 文案创作 Agent 依据渠道模板生成内容；审校 Agent 依据模板检查合规性。
+# copywriting_guide 提炼自 agency-agents-zh 渠道专家 Agent 方法论。
 channels:
   xiaohongshu:
     name: 小红书
@@ -10,6 +11,12 @@ channels:
     require_hashtags: true
     require_emoji: true
     seo_keywords: 标题与正文自然植入搜索关键词
+    copywriting_guide:
+      title_rule: 标题 18-20 字，含关键词 + 情绪触发词。可用公式：后悔没早买式、真实体验式（用了30天）、平替避坑式（别再交智商税了）
+      body_structure: 300-600 字四段式：痛点共鸣（1-2句，让读者觉得说的就是我）→ 产品/方案自然引入（不突兀）→ 使用体验/效果（具体、有细节、有数据）→ 总结推荐（适当降低期望更真实）
+      tags_rule: 2-3 个热门大标签 + 3-5 个精准长尾标签
+      style: 小红书味、懂梗懂审美、生活方式视角不硬推、真实声音不企业腔；情感钩子 + 趋势语言 + 策略性 CTA；内容配比 70% 生活方式 / 20% 趋势参与 / 10% 品牌直推
+      metrics: 互动率>5%、收藏率>8%（内容有实用价值）、CTA 点击率>3%
   wechat:
     name: 微信公众号
     desc: 深度长文
@@ -19,6 +26,10 @@ channels:
     require_hashtags: false
     require_emoji: false
     seo_keywords: 标题优化与文中关键词覆盖
+    copywriting_guide:
+      title_rule: 有冲击力的标题 + 情感钩子（打开率翻倍的关键）；标题与正文布局搜索关键词
+      body_structure: 逻辑清楚、要点列表、可扫读排版；标题分级、视觉层次分明；以读完率>50% 为目标
+      style: 专业可信但不端着，开头用情感钩子抓住读者；数据与案例 > 观点和说教
   weibo:
     name: 微博
     desc: 短平快动态
@@ -28,6 +39,11 @@ channels:
     require_hashtags: true
     require_emoji: true
     seo_keywords: 核心关键词前置
+    copywriting_guide:
+      title_rule: 一句话钩子先行（争议性/情绪共鸣），核心信息紧随
+      body_structure: 传播公式：争议性 × 参与门槛低 × 情绪共鸣；引导转发和评论（转发评论比点赞更有传播价值）
+      tags_rule: 品牌主标签 + 活动子标签 + 热点借势标签
+      style: 有网感、直白有力、不端着；控制在 280 字内，信息密度高
   product_page:
     name: 电商产品页
     desc: 详情页文案
@@ -37,3 +53,7 @@ channels:
     require_hashtags: false
     require_emoji: false
     seo_keywords: 商品关键词覆盖与转化话术
+    copywriting_guide:
+      title_rule: 标题公式 = [品牌] + [核心关键词] + [属性] + [卖点] + [场景]
+      body_structure: 核心卖点 Banner（3 秒内抓住注意力）→ 核心卖点 3-5 条（单一利益点）→ 产品规格与材质 → 用户评价与口碑展示 → 品牌故事与信任背书 → 行动号召
+      style: 转化导向、结果至上；每张图/每段只讲一个利益点；善用价格锚点与社交证明

@@ -42,15 +42,16 @@ def _route_after_review(state: AgentState) -> str:
     return "human_confirm"
 
 
-def build_graph(llm: LLMClient, db_path: Optional[Path] = None):
+def build_graph(llm: LLMClient, db_path: Optional[Path] = None, web_search=None):
     """构建并编译流水线图（SqliteSaver 持久化 checkpoint）。
 
     Args:
         llm: LLM 客户端（注入，便于测试用 fake）
         db_path: checkpoint 数据库路径，默认 <data_dir>/checkpoints.db
+        web_search: 联网搜索客户端（可选）；配置后调研 Agent 会联网检索真实数据
     """
     builder = StateGraph(AgentState)
-    builder.add_node("research", make_research_node(llm))
+    builder.add_node("research", make_research_node(llm, web_search))
     builder.add_node("competitor", make_competitor_node(llm))
     builder.add_node("strategy", make_strategy_node(llm))
     builder.add_node("copywriting", make_copywriting_node(llm))

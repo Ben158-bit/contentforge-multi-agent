@@ -143,3 +143,107 @@ def test_copywriting_injects_review_feedback():
     messages = build_copywriting_messages(state, get_channel("xiaohongshu"))
     user_content = messages[-1]["content"]
     assert "缺少行动号召" in user_content
+
+
+def test_copywriting_injects_channel_guide():
+    """创作节点注入渠道文案方法论（提炼自 agency-agents-zh）。"""
+    from app.agents.prompts import build_copywriting_messages
+    from app.templates import get_channel
+
+    state = _base_state()
+    state["strategy"] = {"core_value_proposition": "v"}
+    messages = build_copywriting_messages(state, get_channel("xiaohongshu"))
+    user_content = messages[-1]["content"]
+    assert "渠道文案方法论" in user_content
+    # 小红书标题公式应注入
+    assert "18-20 字" in user_content
+    assert "痛点共鸣" in user_content
+    assert "热门大标签" in user_content
+
+    # 产品页渠道注入标题公式
+    messages_p = build_copywriting_messages(state, get_channel("product_page"))
+    assert "[品牌] + [核心关键词]" in messages_p[-1]["content"]
+
+
+class FakeWebSearch:
+    """假搜索客户端。"""
+
+    available = True
+
+    def __init__(self, results: list):
+        self.results = results
+        self.calls = 0
+
+    def search(self, query, max_results=None):
+        self.calls += 1
+        return self.results
+
+
+def test_research_node_with_web_search():
+    """调研节点联网：检索结果注入 prompt，输出附带 sources 来源。"""
+    from app.tools.web_search import SearchResult
+
+    fake_search = FakeWebSearch([
+        SearchResult(title="趋势报告", url="https://x.com/trend",
+                     snippet="行业增长 20%", site_name="报告网"),
+        SearchResult(title="用户调研", url="https://x.com/user",
+                     snippet="用户偏好健康材质", site_name="调研网"),
+    ])
+    fake_llm = FakeLLM([json.dumps(
+        {"summary": "s", "trends": ["t"], "audience_insights": ["a"],
+         "pain_points": ["p"], "keywords": ["k"],
+         "sources": [{"title": "趋势报告", "url": "https://x.com/trend"}]},
+        ensure_ascii=False)])
+    state = _base_state()
+    _apply(state, make_research_node(fake_llm, web_search=fake_search)(state))
+
+    assert fake_search.calls >= 2  # 至少检索 topic + 行业趋势
+    assert state["research"]["sources"][0]["url"] == "https://x.com/trend"
+    assert state["stage_status"]["research"] == "completed"
+
+
+def test_research_node_fallback_sources():
+    """LLM 未输出 sources 时，节点兜底附上检索来源。"""
+    from app.tools.web_search import SearchResult
+
+    fake_search = FakeWebSearch([
+        SearchResult(title="来源A", url="https://x.com/a", snippet="内容"),
+    ])
+    fake_llm = FakeLLM([json.dumps(
+        {"summary": "s", "trends": [], "audience_insights": [],
+         "pain_points": [], "keywords": []}, ensure_ascii=False)])
+    state = _base_state()
+    _apply(state, make_research_node(fake_llm, web_search=fake_search)(state))
+
+    assert state["research"]["sources"][0]["url"] == "https://x.com/a"
+
+
+def test_research_node_without_web_search():
+    """未配置搜索时自动降级：不注入检索，正常完成调研。"""
+    fake_llm = FakeLLM([json.dumps(
+        {"summary": "s", "trends": [], "audience_insights": [],
+         "pain_points": [], "keywords": []}, ensure_ascii=False)])
+    state = _base_state()
+    _apply(state, make_research_node(fake_llm, web_search=None)(state))
+
+    assert state["research"]["summary"] == "s"
+    assert state["stage_status"]["research"] == "completed"
+
+
+def test_research_node_search_failure_degrades():
+    """搜索抛异常时降级为纯 LLM，不阻塞流水线。"""
+
+    class BrokenSearch:
+        available = True
+
+        def search(self, query, max_results=None):
+            raise RuntimeError("搜索服务挂了")
+
+    fake_llm = FakeLLM([json.dumps(
+        {"summary": "s", "trends": [], "audience_insights": [],
+         "pain_points": [], "keywords": []}, ensure_ascii=False)])
+    state = _base_state()
+    _apply(state, make_research_node(fake_llm, web_search=BrokenSearch())(state))
+
+    assert state["research"]["summary"] == "s"
+    assert state["stage_status"]["research"] == "completed"

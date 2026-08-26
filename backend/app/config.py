@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     # 演示模式：无需 API Key，用内置 FakeLLM 跑通完整流水线
     fake_llm: bool = False
 
+    # ---- 联网搜索（调研增强）----
+    # provider: bocha（博查，国内直连） / tavily / 留空禁用
+    web_search_provider: str = ""
+    web_search_api_key: str = ""
+    web_search_max_results: int = 5
+
     # ---- 服务 ----
     data_dir: str = "./data"
     cors_origins: str = "http://localhost:5173"
@@ -89,4 +95,18 @@ def get_llm_client() -> LLMClient:
         model=s.deepseek_model,
         temperature=s.deepseek_temperature,
         timeout_seconds=s.llm_timeout_seconds,
+    )
+
+
+def get_web_search_client():
+    """构建联网搜索客户端（未配置 provider/key 时返回 None，调研自动降级）。"""
+    from .tools.web_search import WebSearchClient
+
+    s = get_settings()
+    if not s.web_search_provider or not s.web_search_api_key:
+        return None
+    return WebSearchClient(
+        provider=s.web_search_provider,
+        api_key=s.web_search_api_key,
+        max_results=s.web_search_max_results,
     )

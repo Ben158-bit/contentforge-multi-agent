@@ -27,27 +27,48 @@ def _dump(data: Any) -> str:
 
 # ===================== 1. 市场调研 Agent =====================
 
-def build_research_messages(state: AgentState) -> list[dict[str, str]]:
+def build_research_messages(
+    state: AgentState, search_results: list | None = None
+) -> list[dict[str, str]]:
     """输出 schema:
     {"summary": str, "trends": [str], "audience_insights": [str],
-     "pain_points": [str], "keywords": [str]}
+     "pain_points": [str], "keywords": [str],
+     "sources": [{"title": str, "url": str}]}
+
+    Args:
+        search_results: 联网检索结果（SearchResult 列表），注入后调研有真实依据。
+            为空时退化为模型内部知识。
     """
     inp = state["input"]
     system = _sys(
         "市场调研分析师",
         "负责对指定主题/品牌进行市场调研，输出：行业趋势、目标受众洞察、用户痛点、"
-        "搜索关键词。结论要具体、可执行，避免空泛套话。",
+        "搜索关键词。优先基于提供的联网检索资料作答，结论要具体、可执行，"
+        "避免空泛套话。",
     )
+    sources_section = ""
+    if search_results:
+        lines = "\n".join(
+            f"- 标题：{r.title}\n  来源：{r.url}\n  摘要：{(r.snippet or '')[:200]}"
+            for r in search_results
+        )
+        sources_section = (
+            "\n\n以下是联网检索到的参考资料（必须优先基于这些资料得出结论，"
+            "并在输出 JSON 的 sources 字段中引用你实际使用到的来源）：\n"
+            f"{lines}"
+        )
     user = (
         f"请针对以下营销任务完成市场调研：\n"
         f"- 营销主题：{inp.get('topic', '')}\n"
         f"- 品牌/产品：{inp.get('brand_name', '未指定')}\n"
         f"- 目标受众：{inp.get('target_audience', '未指定')}\n"
         f"- 目标渠道：{inp.get('channel_id', '')}\n"
-        f"- 附加要求：{inp.get('extra_requirements', '无') or '无'}\n\n"
+        f"- 附加要求：{inp.get('extra_requirements', '无') or '无'}"
+        f"{sources_section}\n\n"
         f"请输出 JSON：{{\"summary\": \"调研摘要(200字内)\", "
         f"\"trends\": [\"3-5条行业趋势\"], \"audience_insights\": [\"3-5条受众洞察\"], "
-        f"\"pain_points\": [\"3-5条用户痛点\"], \"keywords\": [\"5-8个搜索关键词\"]}}"
+        f"\"pain_points\": [\"3-5条用户痛点\"], \"keywords\": [\"5-8个搜索关键词\"], "
+        f"\"sources\": [{{\"title\": \"资料来源标题\", \"url\": \"资料来源链接\"}}]}}"
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
@@ -119,6 +140,10 @@ def build_copywriting_messages(state: AgentState, channel: dict) -> list[dict[st
     feedback_section = (
         f"\n上一轮审校未通过，请严格按以下反馈修改文案：\n{feedback}" if feedback else ""
     )
+    guide = channel.get("copywriting_guide") or {}
+    guide_section = "\n".join(
+        f"- {k}: {v}" for k, v in guide.items()
+    ) if guide else "（无额外指南）"
     system = _sys(
         "文案创作专家",
         "依据策略与渠道规范创作营销文案，一次输出 2-3 个风格不同的变体。"
@@ -128,6 +153,7 @@ def build_copywriting_messages(state: AgentState, channel: dict) -> list[dict[st
         f"营销主题：{inp.get('topic', '')}，品牌：{inp.get('brand_name', '未指定')}。\n"
         f"策略：{_dump(strategy)}\n"
         f"渠道规范：\n{_dump(channel)}\n"
+        f"渠道文案方法论（必须遵守）：\n{guide_section}\n"
         f"附加要求：{inp.get('extra_requirements', '无') or '无'}"
         f"{feedback_section}\n\n"
         f"请输出 JSON：{{\"variants\": [{{\"title\": \"标题\", "
@@ -149,6 +175,10 @@ def build_review_messages(
     """
     inp = state["input"]
     strategy = state.get("strategy", {})
+    guide = channel.get("copywriting_guide") or {}
+    guide_section = "\n".join(
+        f"- {k}: {v}" for k, v in guide.items()
+    ) if guide else "（无额外指南）"
     system = _sys(
         "内容审校专家",
         "对照策略与渠道规范逐条检查文案质量：卖点覆盖、渠道适配（语调/长度/结构）、"
@@ -158,6 +188,7 @@ def build_review_messages(
         f"营销主题：{inp.get('topic', '')}，品牌：{inp.get('brand_name', '未指定')}，"
         f"目标渠道：{inp.get('channel_id', '')}。\n"
         f"策略要求：{_dump(strategy)}\n渠道规范：{_dump(channel)}\n"
+        f"渠道文案方法论（审校依据）：\n{guide_section}\n"
         f"待审文案变体：\n{_dump(variants)}\n"
         f"附加要求：{inp.get('extra_requirements', '无') or '无'}\n\n"
         f"请输出 JSON：{{\"passed\": true或false, "

@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .agents.graph import build_graph
 from .api.routes import router
-from .config import get_settings, get_llm_client
+from .config import get_settings, get_llm_client, get_web_search_client
 from .db import init_db
 
 logging.basicConfig(
@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await init_db()
     try:
-        graph = build_graph(get_llm_client())
+        graph = build_graph(get_llm_client(), web_search=get_web_search_client())
         app.state.graph = graph
-        logger.info("流水线图构建成功 (model=%s)", get_settings().deepseek_model)
+        logger.info("流水线图构建成功 (model=%s, web_search=%s)",
+                    get_settings().deepseek_model,
+                    get_settings().web_search_provider or "disabled")
     except RuntimeError as exc:
         # 缺少 API Key 等：服务可启动但无法创建任务
         logger.warning("流水线图构建失败，任务创建将不可用: %s", exc)
