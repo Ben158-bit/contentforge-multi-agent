@@ -204,3 +204,40 @@ def test_feedback_api_flow(client):
     # 不存在任务 → 404
     r = client.post("/api/tasks/999999/feedback", json={"views": 1, "conversions": 0, "score": 1})
     assert r.status_code == 404
+
+
+# ===================== 回填后自动学习（闭环触发） =====================
+
+import json as _json  # noqa: E402
+
+from app.feedback import run_feedback_learning  # noqa: E402
+
+
+async def _seed_content_task(topic: str, title: str, score: float) -> int:
+    tid = await repo.create_task(topic, "xiaohongshu")
+    await repo.upsert_stage(
+        tid, "copywriting", status="completed",
+        output=_json.dumps({"variants": [{"title": title, "body": "第一点：看材质。",
+                                          "hashtags": [], "notes": ""}]}, ensure_ascii=False),
+    )
+    await repo.upsert_content_feedback(tid, views=100, conversions=10, score=score)
+    return tid
+
+
+async def test_run_feedback_learning_flow():
+    """回填数据后自动学习：高分内容含数字特征 → 提炼出正向 has_num 规律入库。"""
+    import uuid as _uuid2
+    bid = await repo.create_brand(f"反馈暖芯-学习-{_uuid2.uuid4().hex[:6]}")
+    # 高分 2 条（标题含数字）+ 低分 2 条（标题无数字）
+    await _seed_content_task("t1", "3 个选购技巧", 4.5)
+    await _seed_content_task("t2", "7 天提升效率", 4.2)
+    await _seed_content_task("t3", "选购指南", 1.5)
+    await _seed_content_task("t4", "日常分享", 1.2)
+
+    added = await run_feedback_learning(bid, llm=_FakeLLM())
+    assert added >= 1
+
+    rules = await repo.list_brand_preferences(bid)
+    feedback_rules = [r for r in rules if r.get("source") == "feedback"]
+    assert len(feedback_rules) >= 1
+    assert feedback_rules[0]["strength"] > 0  # 含数字特征 → 正向规则

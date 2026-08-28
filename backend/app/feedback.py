@@ -139,11 +139,51 @@ async def learn_from_feedback(brand_id: int, rules: list[dict]) -> int:
     return added
 
 
+async def run_feedback_learning(
+    brand_id: int, llm: Optional[Callable] = None,
+) -> int:
+    """效果闭环触发：读取该品牌真实反馈 → 高低分组特征统计 → LLM 归纳 → 入库。
+
+    失败静默降级（不阻断回填主流程）；数据不足或特征无区分度时不产生规律。
+    """
+    try:
+        feedback_rows = await repo.list_content_feedback()
+        if len(feedback_rows) < 4:
+            return 0  # 样本不足，不学习
+        high, low = [], []
+        for fb in feedback_rows:
+            task = await repo.get_task(fb["content_id"])
+            if not task:
+                continue
+            stages = await repo.list_stages(fb["content_id"])
+            task["stages"] = stages
+            features = extract_features(_content_text_of(task))
+            if fb["score"] >= 3.0:
+                high.append(features)
+            else:
+                low.append(features)
+        if len(high) < 1 or len(low) < 1:
+            return 0
+        stats = _feature_stats(high, low)
+        rules = derive_feedback_rules(stats, llm=llm)
+        if not rules:
+            return 0
+        return await learn_from_feedback(brand_id, rules)
+    except Exception:  # 静默降级：学习失败不阻断主流程
+        logger.warning("效果学习失败，跳过本轮", exc_info=True)
+        return 0
+
+
 def _content_text_of(task: dict) -> dict:
     """从任务的 copywriting 阶段 output 取文案结构（title/body/sources）。"""
     for s in task.get("stages", []) or []:
         if s.get("stage_key") == "copywriting" and s.get("output"):
             out = s["output"]
+            if isinstance(out, str):  # stages.output 为 JSON 字符串，需解码
+                try:
+                    out = json.loads(out)
+                except Exception:
+                    continue
             if isinstance(out, dict) and out.get("variants"):
                 variants = out["variants"]
                 return variants[0] if isinstance(variants, list) and variants else out

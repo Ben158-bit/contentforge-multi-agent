@@ -17,7 +17,7 @@ from .. import repository as repo
 from ..agents.nodes import STAGE_KEYS, STAGE_LABELS
 from ..agents.runner import confirm_pipeline, learn_and_confirm, rerun_pipeline, run_task_pipeline
 from ..config import get_settings
-from ..feedback import simulate_feedback_for_task
+from ..feedback import run_feedback_learning, simulate_feedback_for_task
 from ..schemas import (
     BrandCreate,
     BrandUpdate,
@@ -417,6 +417,9 @@ async def submit_feedback(task_id: int, body: FeedbackIn, request: Request) -> d
     await repo.upsert_content_feedback(
         task_id, views=body.views, conversions=body.conversions,
         score=body.score, note=body.note)
+    # 闭环触发：品牌关联时异步提炼效果规律（失败静默降级）
+    if task.get("brand_id"):
+        await run_feedback_learning(task["brand_id"])
     row = await repo.get_content_feedback(task_id)
     return _feedback_payload(row)
 
