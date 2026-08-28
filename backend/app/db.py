@@ -125,6 +125,30 @@ MIGRATIONS: list[tuple[str, list[str]]] = [
             "ALTER TABLE tasks ADD COLUMN brand_id INTEGER",
         ],
     ),
+    (
+        # 效果闭环：效果回填表 + 偏好规则增加来源/强度
+        "v3",
+        [
+            """
+            CREATE TABLE IF NOT EXISTS content_feedback (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                content_id   INTEGER NOT NULL,
+                channel      TEXT NOT NULL DEFAULT 'general',
+                views        INTEGER NOT NULL DEFAULT 0,
+                conversions  INTEGER NOT NULL DEFAULT 0,
+                score        REAL NOT NULL DEFAULT 0,
+                is_simulated INTEGER NOT NULL DEFAULT 0,
+                note         TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE (content_id)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_feedback_content ON content_feedback(content_id)",
+            "ALTER TABLE brand_preferences ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+            "ALTER TABLE brand_preferences ADD COLUMN strength REAL NOT NULL DEFAULT 1.0",
+        ],
+    ),
 ]
 
 

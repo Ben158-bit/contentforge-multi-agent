@@ -318,15 +318,29 @@ async def delete_brand(brand_id: int) -> None:
 
 # ===================== 品牌偏好 BrandPreferences（记忆层）=====================
 
-async def add_brand_preference(brand_id: int, rule_text: str,
-                               source_task: Optional[int] = None) -> int:
+async def add_brand_preference(
+    brand_id: int, rule_text: str,
+    source_task: Optional[int] = None,
+    source: str = "manual", strength: float = 1.0,
+) -> int:
     async with _conn_ctx() as conn:
         cur = await conn.execute(
-            "INSERT INTO brand_preferences (brand_id, rule_text, source_task) VALUES (?, ?, ?)",
-            (brand_id, rule_text, source_task),
+            "INSERT INTO brand_preferences (brand_id, rule_text, source_task, source, strength) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (brand_id, rule_text, source_task, source, strength),
         )
         await conn.commit()
         return cur.lastrowid
+
+
+async def delete_feedback_rule(brand_id: int, rule_id: int) -> None:
+    """删除效果学习规律（仅 source='feedback' 的规则可被删除）。"""
+    async with _conn_ctx() as conn:
+        await conn.execute(
+            "DELETE FROM brand_preferences WHERE id = ? AND brand_id = ? AND source = 'feedback'",
+            (rule_id, brand_id),
+        )
+        await conn.commit()
 
 
 async def list_brand_preferences(brand_id: int, limit: Optional[int] = None) -> list[dict]:
@@ -343,3 +357,44 @@ async def list_brand_preferences(brand_id: int, limit: Optional[int] = None) -> 
             )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+
+# ===================== 效果闭环 Feedback =====================
+
+async def upsert_content_feedback(
+    content_id: int, *, views: int = 0, conversions: int = 0,
+    score: float = 0.0, is_simulated: int = 0, note: str = "",
+    channel: str = "general",
+) -> None:
+    """回填/更新效果数据（content_id 唯一，幂等 upsert）。"""
+    async with _conn_ctx() as conn:
+        await conn.execute(
+            """
+            INSERT INTO content_feedback
+                (content_id, channel, views, conversions, score, is_simulated, note)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(content_id) DO UPDATE SET
+                views=excluded.views, conversions=excluded.conversions,
+                score=excluded.score, is_simulated=excluded.is_simulated,
+                note=excluded.note, updated_at=datetime('now')
+            """,
+            (content_id, channel, views, conversions, score, is_simulated, note),
+        )
+        await conn.commit()
+
+
+async def get_content_feedback(content_id: int) -> dict:
+    async with _conn_ctx() as conn:
+        cur = await conn.execute(
+            "SELECT * FROM content_feedback WHERE content_id = ?", (content_id,))
+        row = await cur.fetchone()
+        return _row_to_dict(row)
+
+
+async def list_content_feedback() -> list[dict]:
+    """真实效果数据（排除模拟），供规律提炼基线。"""
+    async with _conn_ctx() as conn:
+        cur = await conn.execute(
+            "SELECT * FROM content_feedback WHERE is_simulated = 0 ORDER BY id DESC")
+        rows = await cur.fetchall()
+        return [_row_to_dict(r) for r in rows]

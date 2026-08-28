@@ -41,7 +41,7 @@ async def test_init_db_idempotent():
     finally:
         await conn.close()
     assert {"projects", "tasks", "stages", "artifacts", "schema_migrations"} <= tables
-    assert versions == {"v1", "v2"}
+    assert versions == {"v1", "v2", "v3"}
     # v2 迁移应新增品牌表与 tasks.brand_id 列
     assert "brands" in tables and "brand_preferences" in tables
     assert "brand_id" in task_cols

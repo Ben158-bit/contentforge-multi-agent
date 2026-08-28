@@ -86,7 +86,7 @@ async def test_upgrade_from_legacy_schema():
     finally:
         conn.close()
 
-    assert versions == ["v1", "v2"], f"旧记录应迁移为 v1 且 v2 已应用，实际 {versions}"
+    assert versions == ["v1", "v2", "v3"], f"旧记录应迁移为 v1 且 v2/v3 已应用，实际 {versions}"
     assert brands is not None and prefs is not None  # v2 新表已创建
     assert "brand_id" in task_cols  # v2 新列已添加
     assert task_count == 1  # 旧业务数据保留
@@ -112,3 +112,22 @@ async def test_legacy_repair_keeps_applied_at():
         conn.close()
     assert row is not None
     assert row[1] == "2020-01-01 00:00:00"
+
+
+async def test_v3_feedback_tables():
+    """v3 迁移：brand_preferences 增加 source/strength 列，content_feedback 表就绪。"""
+    path = Path(tempfile.mkdtemp(prefix="contentforge-v3-")) / "new.db"
+    await db.init_db(path)
+
+    conn = sqlite3.connect(path)
+    try:
+        pref_cols = [r[1] for r in conn.execute("PRAGMA table_info(brand_preferences)")]
+        tbls = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")]
+        fb_cols = [r[1] for r in conn.execute("PRAGMA table_info(content_feedback)")]
+    finally:
+        conn.close()
+
+    assert "source" in pref_cols and "strength" in pref_cols
+    assert "content_feedback" in tbls
+    assert "content_id" in fb_cols and "is_simulated" in fb_cols
