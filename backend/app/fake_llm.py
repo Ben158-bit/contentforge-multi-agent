@@ -4,8 +4,12 @@
 使完整流水线（含审校循环、人工确认、成本统计）无需真实 API 即可跑通。
 适合：无 Key 体验、CI 测试、演示。
 
-审校 Agent 的演示行为：第一次返回"不通过"（展示打回创作循环），
-之后返回"通过"。
+无状态设计（多任务并发安全）：
+- 文案创作：被审校打回后（prompt 含"上一轮审校未通过"）输出含 CTA 的修订版，
+  否则输出初始版（不含 CTA）。
+- 内容审校：待审文案含"立即下单"（修订版特征）判通过，否则不通过。
+由此自然形成"第一次审校不通过 → 打回重写 → 通过"的演示循环，
+不依赖任何共享计数器。
 """
 from __future__ import annotations
 
@@ -52,6 +56,17 @@ COPYWRITING = {
     ]
 }
 
+COPYWRITING_REVISED = {
+    "variants": [
+        {
+            "title": "打工人冬日续命神器｜实测 24h 保温杯（修订版）",
+            "body": "冬天到了，谁不想随时喝上一口热乎的？☕\n这款暖芯保温杯真的绝了——早上装的热水，晚上下班还是烫嘴的！\n\n✅ 24 小时长效保温（实测）\n✅ 颜值在线，通勤/办公都能打\n✅ 密封防漏，放包里超安心\n\n限时立减 30 元，立即下单，这个冬天暖到心里！",
+            "hashtags": ["#保温杯推荐", "#打工人好物", "#秋冬必备"],
+            "notes": "演示数据：已按审校反馈补充 CTA",
+        }
+    ]
+}
+
 REVIEW_FAIL = {
     "passed": False,
     "feedback": "演示反馈：缺少明确的行动号召与价格信息，建议补充 CTA。",
@@ -76,17 +91,14 @@ _STAGE_KEYWORDS = [
     ("市场调研", RESEARCH),
     ("竞品分析", COMPETITOR),
     ("营销策略总监", STRATEGY),
-    ("文案创作专家", COPYWRITING),
-    ("内容审校专家", None),  # 单独处理（审校轮次）
 ]
 
 
 class FakeLLMClient:
-    """与 LLMClient 同接口的演示客户端。"""
+    """与 LLMClient 同接口的演示客户端（无状态，多任务并发安全）。"""
 
     def __init__(self, model: str = "fake-demo") -> None:
         self.model = model
-        self._review_calls = 0
 
     def chat(
         self,
@@ -98,11 +110,17 @@ class FakeLLMClient:
         json_mode: bool = False,
     ) -> LLMResult:
         text = " ".join(m["content"] for m in messages if m.get("content"))
-        payload: dict = {"error": "无法识别的阶段"}
-        for keyword, response in _STAGE_KEYWORDS:
-            if keyword in text:
-                payload = response if response is not None else self._review_response()
-                break
+        # 创作与审校按 prompt 内容无状态判定，其余阶段按角色关键字路由
+        if "文案创作专家" in text:
+            payload = COPYWRITING_REVISED if "上一轮审校未通过" in text else COPYWRITING
+        elif "内容审校专家" in text:
+            payload = REVIEW_PASS if "立即下单" in text else REVIEW_FAIL
+        else:
+            payload = {"error": "无法识别的阶段"}
+            for keyword, response in _STAGE_KEYWORDS:
+                if keyword in text:
+                    payload = response
+                    break
         return LLMResult(
             content=json.dumps(payload, ensure_ascii=False),
             model=self.model,
@@ -110,11 +128,6 @@ class FakeLLMClient:
             completion_tokens=50,
             latency_seconds=0.1,
         )
-
-    def _review_response(self) -> dict:
-        """演示审校：第一次不通过（触发打回），后续通过。"""
-        self._review_calls += 1
-        return REVIEW_FAIL if self._review_calls == 1 else REVIEW_PASS
 
     @property
     def display_name(self) -> str:

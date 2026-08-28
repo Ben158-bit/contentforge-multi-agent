@@ -7,6 +7,8 @@ services:
       # 默认演示模式（无需 API Key）；设置 FAKE_LLM=false + DEEPSEEK_API_KEY 走真实模型
       FAKE_LLM: ${FAKE_LLM:-true}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      # API 鉴权 Token（空 = 不鉴权，仅供本地体验；公网部署务必设置）
+      API_TOKEN: ${API_TOKEN:-}
     ports:
       - "8000:8000"
     volumes:
@@ -21,6 +23,9 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        # 与 backend 的 API_TOKEN 保持一致，前端才能携带鉴权头
+        VITE_API_TOKEN: ${API_TOKEN:-}
     depends_on:
       - backend
     ports:

@@ -59,13 +59,16 @@ async def create_task(
     brand_name: str = "",
     target_audience: str = "",
     extra_requirements: str = "",
+    brand_id: Optional[int] = None,
 ) -> int:
     async with _conn_ctx() as conn:
         cur = await conn.execute(
             """INSERT INTO tasks
-               (project_id, topic, brand_name, target_audience, channel_id, extra_requirements)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (project_id, topic, brand_name, target_audience, channel_id, extra_requirements),
+               (project_id, topic, brand_name, target_audience, channel_id,
+                extra_requirements, brand_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (project_id, topic, brand_name, target_audience, channel_id,
+             extra_requirements, brand_id),
         )
         await conn.commit()
         return cur.lastrowid
@@ -89,12 +92,46 @@ async def list_tasks(project_id: Optional[int] = None) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+async def list_tasks_with_stages(project_id: Optional[int] = None) -> list[dict]:
+    """任务列表 + 每任务的阶段状态（单次 LEFT JOIN 查询，避免 N+1）。"""
+    async with _conn_ctx() as conn:
+        sql = (
+            "SELECT t.*, s.stage_key, s.status AS stage_status "
+            "FROM tasks t LEFT JOIN stages s ON s.task_id = t.id "
+        )
+        params: tuple = ()
+        if project_id is not None:
+            sql += "WHERE t.project_id = ? "
+            params = (project_id,)
+        sql += "ORDER BY t.id DESC"
+        cur = await conn.execute(sql, params)
+        rows = await cur.fetchall()
+
+    tasks: dict[int, dict] = {}
+    order: list[int] = []
+    for r in rows:
+        tid = r["id"]
+        if tid not in tasks:
+            task = dict(r)
+            task.pop("stage_key", None)
+            task.pop("stage_status", None)
+            task["stages"] = []
+            tasks[tid] = task
+            order.append(tid)
+        if r["stage_key"] is not None:
+            tasks[tid]["stages"].append(
+                {"stage_key": r["stage_key"], "status": r["stage_status"]}
+            )
+    return [tasks[tid] for tid in order]
+
+
 async def update_task(task_id: int, **fields: Any) -> None:
     """按字段名更新任务（自动刷新 updated_at）。"""
     if not fields:
         return
     allowed = {"project_id", "topic", "brand_name", "target_audience",
-               "channel_id", "extra_requirements", "status", "total_cost", "total_latency"}
+               "channel_id", "extra_requirements", "status", "total_cost",
+               "total_latency", "brand_id"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return
@@ -102,7 +139,7 @@ async def update_task(task_id: int, **fields: Any) -> None:
     values = list(updates.values()) + [task_id]
     async with _conn_ctx() as conn:
         await conn.execute(
-            f"UPDATE tasks SET {cols}, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            f"UPDATE tasks SET {cols}, updated_at = datetime('now') WHERE id = ?",
             values,
         )
         await conn.commit()
@@ -125,7 +162,7 @@ async def upsert_stage(task_id: int, stage_key: str, **fields: Any) -> int:
             f"""INSERT INTO stages (task_id, stage_key, {cols})
                 VALUES (?, ?, {placeholders})
                 ON CONFLICT(task_id, stage_key) DO UPDATE SET {set_clause},
-                    updated_at = datetime('now', 'localtime')""",
+                    updated_at = datetime('now')""",
             values,
         )
         await conn.commit()
@@ -206,7 +243,103 @@ async def update_artifact(artifact_id: int, *, content: Optional[str] = None,
     values = list(updates.values()) + [artifact_id]
     async with _conn_ctx() as conn:
         await conn.execute(
-            f"UPDATE artifacts SET {cols}, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            f"UPDATE artifacts SET {cols}, updated_at = datetime('now') WHERE id = ?",
             values,
         )
         await conn.commit()
+
+
+# ===================== 品牌 Brands（记忆层）=====================
+
+async def create_brand(
+    name: str,
+    tone: str = "",
+    core_claims: str = "",
+    audience: str = "",
+    taboos: str = "",
+    notes: str = "",
+) -> int:
+    async with _conn_ctx() as conn:
+        cur = await conn.execute(
+            """INSERT INTO brands (name, tone, core_claims, audience, taboos, notes)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (name, tone, core_claims, audience, taboos, notes),
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+
+async def get_brand(brand_id: int) -> dict:
+    async with _conn_ctx() as conn:
+        cur = await conn.execute("SELECT * FROM brands WHERE id = ?", (brand_id,))
+        return _row_to_dict(await cur.fetchone())
+
+
+async def get_brand_by_name(name: str) -> dict:
+    async with _conn_ctx() as conn:
+        cur = await conn.execute("SELECT * FROM brands WHERE name = ?", (name,))
+        return _row_to_dict(await cur.fetchone())
+
+
+async def list_brands() -> list[dict]:
+    """品牌列表（含偏好规则条数）。"""
+    async with _conn_ctx() as conn:
+        cur = await conn.execute(
+            """SELECT b.*, (SELECT COUNT(*) FROM brand_preferences p
+                           WHERE p.brand_id = b.id) AS pref_count
+               FROM brands b ORDER BY b.id"""
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def update_brand(brand_id: int, **fields: Any) -> None:
+    allowed = {"name", "tone", "core_claims", "audience", "taboos", "notes"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return
+    cols = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [brand_id]
+    async with _conn_ctx() as conn:
+        await conn.execute(
+            f"UPDATE brands SET {cols}, updated_at = datetime('now') WHERE id = ?",
+            values,
+        )
+        await conn.commit()
+
+
+async def delete_brand(brand_id: int) -> None:
+    """删除品牌及其偏好规则（SQLite 外键默认关闭，需显式级联）。"""
+    async with _conn_ctx() as conn:
+        await conn.execute("DELETE FROM brand_preferences WHERE brand_id = ?", (brand_id,))
+        await conn.execute("DELETE FROM brands WHERE id = ?", (brand_id,))
+        await conn.commit()
+
+
+# ===================== 品牌偏好 BrandPreferences（记忆层）=====================
+
+async def add_brand_preference(brand_id: int, rule_text: str,
+                               source_task: Optional[int] = None) -> int:
+    async with _conn_ctx() as conn:
+        cur = await conn.execute(
+            "INSERT INTO brand_preferences (brand_id, rule_text, source_task) VALUES (?, ?, ?)",
+            (brand_id, rule_text, source_task),
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+
+async def list_brand_preferences(brand_id: int, limit: Optional[int] = None) -> list[dict]:
+    async with _conn_ctx() as conn:
+        if limit is None:
+            cur = await conn.execute(
+                "SELECT * FROM brand_preferences WHERE brand_id = ? ORDER BY id DESC",
+                (brand_id,),
+            )
+        else:
+            cur = await conn.execute(
+                "SELECT * FROM brand_preferences WHERE brand_id = ? ORDER BY id DESC LIMIT ?",
+                (brand_id, int(limit)),
+            )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]

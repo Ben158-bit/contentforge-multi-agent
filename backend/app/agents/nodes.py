@@ -15,6 +15,7 @@ from typing import Any, Callable
 from langgraph.types import interrupt
 
 from ..llm import LLMClient, LLMResult
+from ..memory import get_brand_context
 from ..templates import get_channel
 from .prompts import (
     build_competitor_messages,
@@ -42,19 +43,24 @@ STAGE_LABELS = {
 }
 
 
-def _safe_json(text: str) -> dict:
-    """容错解析 LLM 的 JSON 输出：先整体解析，失败则提取首个 {...} 块。"""
+def _safe_json(text: str) -> Any:
+    """容错解析 LLM 的 JSON 输出：先整体解析，失败则提取首个 {…} 或 […] 块。
+
+    返回类型可能是 dict 或 list（调用方按各自节点 schema 兜底）。
+    """
     text = text.strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start : end + 1])
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"LLM 输出无法解析为 JSON: {text[:200]}") from exc
-        raise ValueError(f"LLM 输出中未找到 JSON 对象: {text[:200]}")
+        # 对象优先，其次数组
+        for start_ch, end_ch in (("{", "}"), ("[", "]")):
+            start, end = text.find(start_ch), text.rfind(end_ch)
+            if start >= 0 and end > start:
+                try:
+                    return json.loads(text[start : end + 1])
+                except json.JSONDecodeError:
+                    continue
+        raise ValueError(f"LLM 输出中未找到 JSON: {text[:200]}")
 
 
 def _accumulate(state: AgentState, result: LLMResult) -> dict:
@@ -157,11 +163,12 @@ def make_strategy_node(llm: LLMClient) -> Callable:
 
 
 def make_copywriting_node(llm: LLMClient) -> Callable:
-    """4. 文案创作 Agent（审校打回时会带 feedback 重新进入）。"""
+    """4. 文案创作 Agent（审校打回时会带 feedback 重新进入；记忆层注入品牌上下文）。"""
 
     def node(state: AgentState) -> dict:
         channel = get_channel(state["input"]["channel_id"])
-        messages = build_copywriting_messages(state, channel)
+        brand_ctx = get_brand_context(state.get("brand_id"))
+        messages = build_copywriting_messages(state, channel, brand_context=brand_ctx)
         result = llm.chat(messages, json_mode=True, temperature=0.8)
         output = _safe_json(result.content)
         variants = output.get("variants", [])

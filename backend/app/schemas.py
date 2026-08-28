@@ -18,6 +18,25 @@ class TaskCreate(BaseModel):
     target_audience: str = Field("", max_length=200, description="目标受众")
     extra_requirements: str = Field("", max_length=500, description="附加要求")
     project_id: Optional[int] = None
+    brand_id: Optional[int] = Field(None, description="关联的品牌档案 id（记忆层，可选）")
+
+
+class BrandCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    tone: str = Field("", max_length=200, description="品牌调性")
+    core_claims: str = Field("", max_length=500, description="核心卖点/主张")
+    audience: str = Field("", max_length=200, description="目标受众")
+    taboos: str = Field("", max_length=500, description="禁忌词/表达")
+    notes: str = Field("", max_length=500)
+
+
+class BrandUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    tone: Optional[str] = Field(None, max_length=200)
+    core_claims: Optional[str] = Field(None, max_length=500)
+    audience: Optional[str] = Field(None, max_length=200)
+    taboos: Optional[str] = Field(None, max_length=500)
+    notes: Optional[str] = Field(None, max_length=500)
 
 
 class StageEdit(BaseModel):
@@ -28,9 +47,11 @@ class StageEdit(BaseModel):
 
 
 class ConfirmRequest(BaseModel):
-    """提交人工确认：携带编辑后的文案变体。"""
+    """提交人工确认：携带编辑后的文案变体，可选勾选纠错学习。"""
 
     variants: list[Any] = []
+    learn: bool = Field(False, description="是否把本次修改记入品牌偏好（纠错学习）")
+    brand_id: Optional[int] = Field(None, description="学习的品牌档案 id")
 
 
 class ChannelOut(BaseModel):

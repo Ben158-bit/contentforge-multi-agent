@@ -7,10 +7,12 @@
 ## ✨ 亮点
 
 - **多 Agent 编排**：LangGraph 图状态机 + SQLite checkpoint 持久化，任务可断点恢复
-- **Human-in-the-loop**：每阶段产出可预览、编辑、确认；审校不通过自动打回创作（带上一轮反馈）重写
-- **实时可观测性**：SSE 推送阶段进度；每阶段/任务级 token 成本与耗时统计（DeepSeek 计价）
+- **记忆层**：品牌档案（显式）+ 纠错学习（隐式）——确认时勾选「记入偏好」，系统自动从你的修改中学习品牌内容偏好，下次创作自动应用
+- **Human-in-the-loop**：每阶段产出可预览、编辑、确认；编辑上游阶段（调研/竞品/策略）后确认会**重跑下游使编辑真正生效**；审校不通过自动打回创作（带上一轮反馈）重写
+- **实时可观测性**：SSE 推送阶段进度；阶段级/任务级 token 成本与耗时统计（DeepSeek 计价）
 - **演示模式**：无 API Key 即可体验完整流水线（内置 FakeLLM，含审校打回演示）
-- **全栈工程化**：FastAPI + React(Vite) + SQLite，Docker 部署，26 项自动化测试
+- **安全与可靠性**：Bearer Token 鉴权 + 写接口限流 + 提示词注入防护 + 请求体限制 + request_id 结构化日志；任务级超时看门狗 + 启动恢复 + 后台并发上限
+- **全栈工程化**：FastAPI + React(Vite) + SQLite，Docker 部署，65 项后端测试 + 11 项前端测试 + GitHub Actions CI
 
 ## 🏗 架构
 
@@ -64,6 +66,7 @@ python -m venv ../.venv
 # 配置（二选一）
 cp .env.example .env                                 # 填入 DEEPSEEK_API_KEY
 # 或 演示模式：设置 FAKE_LLM=true（无需 API Key）
+# 公网/生产部署务必设置 API_TOKEN（前端构建时用 VITE_API_TOKEN 注入）
 
 ../.venv/Scripts/python -m uvicorn app.main:app --port 8000
 ```
@@ -88,7 +91,7 @@ bash scripts/e2e-smoke.sh   # 启动前后端 → 创建任务 → SSE → 确�
 
 ```bash
 cd backend
-../.venv/Scripts/python -m pytest tests/ -q    # 26 项：编排/仓储/API/SSE/演示模式
+../.venv/Scripts/python -m pytest tests/ -q    # 65 项：编排/仓储/API/SSE/演示/安全/可靠性/记忆层
 ```
 
 ## 📁 目录结构
@@ -103,12 +106,16 @@ backend/
 │   │   ├── state.py     #   状态 schema
 │   │   └── runner.py    #   同步执行器：逐步回写进度到 SQLite
 │   ├── api/routes.py    # REST + SSE 路由
-│   ├── db.py            # SQLite 数据层（4 实体 + 迁移）
+│   ├── db.py            # SQLite 数据层（版本化迁移：v1+v2）
+│   ├── db_sql.py        # 统一同步 SQL 层（runner/memory 复用）
 │   ├── repository.py    # 异步 CRUD
 │   ├── config.py        # 配置管理（.env 校验）
 │   ├── fake_llm.py      # 演示模式 FakeLLM
+│   ├── memory.py        # 记忆层：品牌上下文 + 纠错学习
+│   ├── logging_setup.py # 结构化 JSON 日志 + request_id
+│   ├── security.py      # 鉴权 / 限流 / 请求体限制 / request_id
 │   └── main.py          # FastAPI 入口
-├── tests/               # 26 项测试
+├── tests/               # 65 项测试
 └── requirements.txt
 frontend/                # React(Vite)+TS 单页应用
 scripts/e2e-smoke.sh     # 端到端冒烟脚本
@@ -118,13 +125,14 @@ scripts/e2e-smoke.sh     # 端到端冒烟脚本
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/tasks` | 创建任务并启动流水线（后台执行） |
+| POST | `/api/tasks` | 创建任务并启动流水线（后台执行，可关联品牌） |
 | GET | `/api/tasks` / `/api/tasks/{id}` | 任务列表 / 详情（含阶段与工件） |
-| PUT | `/api/tasks/{id}/stages/{stage}` | 编辑阶段产出（人工干预） |
-| POST | `/api/tasks/{id}/confirm` | 人工确认，携带编辑后文案，恢复执行 |
+| PUT | `/api/tasks/{id}/stages/{stage}` | 编辑阶段产出（人工干预，上游编辑后 confirm 会重跑下游） |
+| POST | `/api/tasks/{id}/confirm` | 人工确认，携带编辑后文案；可选 learn+brand_id 触发纠错学习 |
 | POST | `/api/tasks/{id}/rerun` | 重置 checkpoint 重跑整个流水线 |
 | GET | `/api/tasks/{id}/events` | SSE 实时进度推送 |
 | GET | `/api/stats` / `/api/channels` | 成本统计 / 渠道模板 |
+| POST/GET/PUT/DELETE | `/api/brands...` | 品牌档案 CRUD（记忆层） |
 
 ## 🧠 关键技术决策
 

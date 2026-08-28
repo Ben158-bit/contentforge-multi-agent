@@ -106,14 +106,15 @@ def test_task_full_flow(tmp_path):
         assert detail["total_cost"] > 0
         assert detail["stages"][0]["output"]["summary"] == "s"
 
-        # 3. 编辑策略阶段（human-in-the-loop 干预）
+        # 3. 编辑文案阶段（human-in-the-loop 干预）
         edit = client.put(
-            f"/api/tasks/{task_id}/stages/strategy",
-            json={"output": {"core_value_proposition": "人工修改的主张"}},
+            f"/api/tasks/{task_id}/stages/copywriting",
+            json={"variants": [{"title": "人工编辑标题", "body": "正文",
+                                "hashtags": [], "notes": "人工干预"}]},
         )
         assert edit.status_code == 200
-        strategy_stage = [s for s in edit.json()["stages"] if s["stage_key"] == "strategy"][0]
-        assert strategy_stage["output"]["core_value_proposition"] == "人工修改的主张"
+        copy_stage = [s for s in edit.json()["stages"] if s["stage_key"] == "copywriting"][0]
+        assert copy_stage["output"][0]["title"] == "人工编辑标题"
 
         # 4. 确认推进（携带编辑后的文案）
         confirm = client.post(
@@ -125,6 +126,9 @@ def test_task_full_flow(tmp_path):
         done = _wait_status(client, task_id, "completed")
         assert done["artifacts"][0]["content"]["title"] == "标题-确认"
         assert done["total_cost"] > 0
+        # 单阶段成本之和应等于任务累计成本（阶段成本为增量，非累计值）
+        stage_cost_sum = round(sum(s["cost"] for s in done["stages"]), 6)
+        assert stage_cost_sum == round(done["total_cost"], 6), (stage_cost_sum, done["total_cost"])
 
         # 5. 重跑（从 checkpoint 重置后重新生成）
         rerun = client.post(f"/api/tasks/{task_id}/rerun")
@@ -220,3 +224,210 @@ def test_task_sse_and_stats(tmp_path):
     finally:
         server.should_exit = True
         thread.join(timeout=10)
+
+
+class ReflectiveLLM:
+    """文案标题回显策略主张，用于验证上游编辑真正影响下游文案。"""
+
+    def __init__(self):
+        self.calls = 0
+
+    def chat(self, messages, **kwargs):
+        self.calls += 1
+        text = " ".join(m["content"] for m in messages if m.get("content"))
+        if "市场调研分析师" in text:
+            out = {"summary": "s", "trends": ["t"], "audience_insights": ["a"],
+                   "pain_points": ["p"], "keywords": ["k"]}
+        elif "竞品分析专家" in text:
+            out = {"competitors": [], "gaps": ["g"]}
+        elif "营销策略总监" in text:
+            out = {"target_audience": "白领", "core_value_proposition": "原主张",
+                   "key_messages": ["m"], "tone_guidance": "g",
+                   "content_angles": ["a"], "channel_strategy": "s"}
+        elif "文案创作专家" in text:
+            import re
+            match = re.search(r'core_value_proposition["\']?\s*:\s*["\']([^"\']+)', text)
+            value = match.group(1) if match else "?"
+            out = {"variants": [{"title": f"标题-{value}", "body": "正文",
+                                 "hashtags": [], "notes": ""}]}
+        elif "内容审校专家" in text:
+            out = {"passed": True, "feedback": "", "checklist": []}
+        else:
+            out = {}
+        return LLMResult(content=json.dumps(out, ensure_ascii=False), model="fake",
+                         prompt_tokens=100, completion_tokens=50, latency_seconds=0.01)
+
+
+def test_edit_upstream_stage_affects_copywriting(tmp_path):
+    """编辑上游阶段后 confirm：下游重新生成文案，编辑内容真正生效。"""
+    graph = build_graph(ReflectiveLLM(), db_path=tmp_path / "ckpt.db")
+
+    with TestClient(app) as client:
+        app.state.graph = graph
+
+        resp = client.post("/api/tasks", json={
+            "topic": "智能保温杯", "channel_id": "xiaohongshu", "brand_name": "暖芯",
+        })
+        assert resp.status_code == 201
+        task_id = resp.json()["id"]
+        detail = _wait_status(client, task_id, "waiting_human")
+        copy_stage = [s for s in detail["stages"] if s["stage_key"] == "copywriting"][0]
+        assert any("原主张" in v["title"] for v in copy_stage["output"])
+
+        # 编辑策略阶段
+        edit = client.put(
+            f"/api/tasks/{task_id}/stages/strategy",
+            json={"output": {"core_value_proposition": "人工修改的主张"}},
+        )
+        assert edit.status_code == 200
+
+        # confirm：因上游编辑触发下游重跑，任务应再次回到 waiting_human
+        confirm = client.post(f"/api/tasks/{task_id}/confirm", json={"variants": []})
+        assert confirm.status_code == 200
+        # 等待下游重跑完成：轮询直到文案反映编辑内容（confirm 已后台化，立即返回）
+        deadline = time.time() + 15
+        titles = []
+        while time.time() < deadline:
+            d = client.get(f"/api/tasks/{task_id}").json()
+            copy_stage = [s for s in d["stages"] if s["stage_key"] == "copywriting"][0]
+            titles = [v["title"] for v in copy_stage["output"]]
+            if d["status"] == "waiting_human" and any("人工修改的主张" in t for t in titles):
+                break
+            time.sleep(0.1)
+        assert any("人工修改的主张" in t for t in titles), titles
+
+        # 第二次确认完成定稿
+        confirm2 = client.post(f"/api/tasks/{task_id}/confirm", json={
+            "variants": [{"title": "定稿", "body": "正文", "hashtags": [], "notes": ""}],
+        })
+        assert confirm2.status_code == 200
+        done = _wait_status(client, task_id, "completed")
+        assert done["artifacts"][0]["content"]["title"] == "定稿"
+
+
+class SlowLLM(ReflectiveLLM):
+    """每个 LLM 调用睡 0.5s，用于验证 confirm/rerun 后台化不阻塞请求。"""
+
+    def chat(self, messages, **kwargs):
+        time.sleep(0.5)
+        return super().chat(messages, **kwargs)
+
+
+def test_confirm_returns_immediately(tmp_path):
+    """confirm 触发编辑回填重跑（含 LLM 调用）时，接口应立即返回而非阻塞。"""
+    graph = build_graph(SlowLLM(), db_path=tmp_path / "ckpt.db")
+    with TestClient(app) as client:
+        app.state.graph = graph
+        resp = client.post("/api/tasks", json={
+            "topic": "智能保温杯", "channel_id": "xiaohongshu", "brand_name": "暖芯",
+        })
+        assert resp.status_code == 201
+        task_id = resp.json()["id"]
+        _wait_status(client, task_id, "waiting_human", timeout=30)
+
+        client.put(
+            f"/api/tasks/{task_id}/stages/strategy",
+            json={"output": {"core_value_proposition": "人工修改的主张"}},
+        )
+        start = time.time()
+        confirm = client.post(f"/api/tasks/{task_id}/confirm", json={"variants": []})
+        elapsed = time.time() - start
+        assert confirm.status_code == 200
+        assert elapsed < 1.0, f"confirm 阻塞了 {elapsed:.2f}s"
+        _wait_status(client, task_id, "waiting_human", timeout=30)
+
+
+def test_rerun_returns_immediately(tmp_path):
+    """rerun 重跑整条流水线（含多次 LLM 调用）时，接口应立即返回而非阻塞。"""
+    graph = build_graph(SlowLLM(), db_path=tmp_path / "ckpt.db")
+    with TestClient(app) as client:
+        app.state.graph = graph
+        resp = client.post("/api/tasks", json={
+            "topic": "智能保温杯", "channel_id": "xiaohongshu", "brand_name": "暖芯",
+        })
+        assert resp.status_code == 201
+        task_id = resp.json()["id"]
+        _wait_status(client, task_id, "waiting_human", timeout=30)
+
+        start = time.time()
+        rerun = client.post(f"/api/tasks/{task_id}/rerun")
+        elapsed = time.time() - start
+        assert rerun.status_code == 200
+        assert elapsed < 1.0, f"rerun 阻塞了 {elapsed:.2f}s"
+        _wait_status(client, task_id, "waiting_human", timeout=30)
+
+
+def test_concurrent_tasks_finish_under_semaphore(tmp_path):
+    """并发创建多个任务时全部正常到达人工确认（信号量排队，不崩不超限）。"""
+    graph = build_graph(SlowLLM(), db_path=tmp_path / "ckpt.db")
+    with TestClient(app) as client:
+        app.state.graph = graph
+        task_ids = []
+        for i in range(5):
+            resp = client.post("/api/tasks", json={
+                "topic": f"智能保温杯{i}", "channel_id": "xiaohongshu", "brand_name": "暖芯",
+            })
+            assert resp.status_code == 201
+            task_ids.append(resp.json()["id"])
+        for tid in task_ids:
+            _wait_status(client, tid, "waiting_human", timeout=60)
+
+
+class RuleLLM:
+    """固定返回一条偏好规则的假 LLM（纠错学习用）。"""
+
+    def chat(self, messages, **kwargs):
+        from app.llm import LLMResult
+
+        return LLMResult(content=json.dumps({"rules": ["标题避免感叹号"]}),
+                         model="fake", prompt_tokens=10, completion_tokens=5,
+                         latency_seconds=0.01)
+
+
+def test_brands_api_and_learn_flow(tmp_path, monkeypatch):
+    """品牌 CRUD API + 关联品牌任务 + 勾选学习偏好入库（API 全链路）。"""
+    import app.memory as memory_module
+
+    monkeypatch.setattr(memory_module, "get_llm_client", lambda: RuleLLM())
+    fake = FakeLLM([RESEARCH, COMPETITOR, STRATEGY, COPY, REVIEW_PASS] * 2)
+    graph = build_graph(fake, db_path=tmp_path / "ckpt.db")
+
+    with TestClient(app) as client:
+        app.state.graph = graph
+        # 品牌 CRUD
+        resp = client.post("/api/brands", json={"name": "暖芯", "tone": "温暖亲切"})
+        assert resp.status_code == 201
+        bid = resp.json()["id"]
+        assert client.get("/api/brands").json()[0]["name"] == "暖芯"
+        assert client.get(f"/api/brands/{bid}").json()["tone"] == "温暖亲切"
+        assert client.post("/api/brands", json={"name": "暖芯"}).status_code == 409
+        assert client.get("/api/brands/99999").status_code == 404
+        upd = client.put(f"/api/brands/{bid}", json={"tone": "专业可信"})
+        assert upd.status_code == 200 and upd.json()["tone"] == "专业可信"
+
+        # 关联品牌创建任务
+        resp = client.post("/api/tasks", json={
+            "topic": "智能保温杯", "channel_id": "xiaohongshu",
+            "brand_name": "暖芯", "brand_id": bid,
+        })
+        assert resp.status_code == 201
+        task_id = resp.json()["id"]
+        _wait_status(client, task_id, "waiting_human")
+
+        # 确认 + 勾选学习（提交与 AI 原版不同的文案 → 触发学习）
+        confirm = client.post(f"/api/tasks/{task_id}/confirm", json={
+            "variants": [{"title": "标题-用户修改", "body": "正文", "hashtags": [], "notes": ""}],
+            "learn": True,
+            "brand_id": bid,
+        })
+        assert confirm.status_code == 200
+        _wait_status(client, task_id, "completed")
+
+        # 偏好已入库
+        brand = client.get(f"/api/brands/{bid}").json()
+        assert len(brand["preferences"]) == 1
+        assert brand["preferences"][0]["rule_text"] == "标题避免感叹号"
+
+        # 删除品牌 → 偏好级联清理
+        assert client.delete(f"/api/brands/{bid}").status_code == 200
+        assert client.get(f"/api/brands/{bid}").status_code == 404

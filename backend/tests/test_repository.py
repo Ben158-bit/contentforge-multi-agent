@@ -26,7 +26,7 @@ async def _init_db():
 
 
 async def test_init_db_idempotent():
-    """重复初始化不报错，且表结构存在。"""
+    """重复初始化不报错，且表结构存在、迁移版本正确。"""
     await db.init_db()  # 第二次调用
     conn = await db.get_conn()
     try:
@@ -35,11 +35,16 @@ async def test_init_db_idempotent():
         )
         tables = {r[0] for r in await cur.fetchall()}
         cur = await conn.execute("SELECT version FROM schema_migrations")
-        version = (await cur.fetchone())["version"]
+        versions = {r["version"] for r in await cur.fetchall()}
+        cur = await conn.execute("PRAGMA table_info(tasks)")
+        task_cols = {r["name"] for r in await cur.fetchall()}
     finally:
         await conn.close()
     assert {"projects", "tasks", "stages", "artifacts", "schema_migrations"} <= tables
-    assert version == 1
+    assert versions == {"v1", "v2"}
+    # v2 迁移应新增品牌表与 tasks.brand_id 列
+    assert "brands" in tables and "brand_preferences" in tables
+    assert "brand_id" in task_cols
 
 
 async def test_project_and_task_crud():

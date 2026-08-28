@@ -61,6 +61,30 @@ body {
   opacity: 0.85;
 }
 
+.app-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-btn {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font-size: 13px;
+}
+
+.nav-btn:hover { border-color: #fff; color: #fff; background: rgba(255, 255, 255, 0.12); }
+.nav-btn.active { background: rgba(255, 255, 255, 0.2); }
+
+/* 屏幕阅读器专用（视觉隐藏但可被朗读） */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .app-main {
   flex: 1;
   max-width: 1080px;
@@ -393,6 +417,30 @@ body {
 .variant-card textarea {
   resize: vertical;
   line-height: 1.6;
+}
+
+/* ===== 确认区（记忆层纠错学习） ===== */
+.confirm-area {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.learn-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.learn-option select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
 }
 
 /* ===== 响应式 ===== */

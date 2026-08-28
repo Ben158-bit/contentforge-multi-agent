@@ -46,9 +46,23 @@ class Settings(BaseSettings):
     data_dir: str = "./data"
     cors_origins: str = "http://localhost:5173"
 
+    # ---- 安全 ----
+    # API Token：非空时所有 API（/health 除外）要求 Bearer Token / ?token= 鉴权
+    api_token: str = ""
+    # 写接口限流：每客户端 IP 每分钟最大写请求数
+    rate_limit_per_minute: int = 60
+
     # ---- 编排 ----
     max_revision_rounds: int = 3
     llm_timeout_seconds: float = 120.0
+
+    # ---- 可靠性 ----
+    # 任务级超时看门狗：running 任务超过该时长（分钟）未推进则置 failed
+    task_deadline_minutes: int = 10
+    # 看门狗扫描间隔（秒）
+    watchdog_interval_seconds: int = 60
+    # 后台流水线最大并发执行数（超出排队，避免打爆 LLM API 配额）
+    max_concurrent_tasks: int = 3
 
     @property
     def cors_origin_list(self) -> list[str]:

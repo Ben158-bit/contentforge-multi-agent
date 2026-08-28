@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import type { Channel, Stats, Task } from '../types'
-import { StatusBadge } from './Pipeline'
+import type { Brand, Channel, Stats, Task } from '../types'
+import { StatusBadge, formatTime } from './Pipeline'
 
 interface Props {
   onOpen: (taskId: number) => void
@@ -11,11 +11,13 @@ export default function TaskList({ onOpen }: Props) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [channels, setChannels] = useState<Channel[]>([])
+  const [brands, setBrands] = useState<Brand[]>([])
   const [error, setError] = useState('')
 
   // 表单状态
   const [topic, setTopic] = useState('')
   const [channelId, setChannelId] = useState('xiaohongshu')
+  const [brandId, setBrandId] = useState<number | ''>('')
   const [brandName, setBrandName] = useState('')
   const [audience, setAudience] = useState('')
   const [extra, setExtra] = useState('')
@@ -35,6 +37,7 @@ export default function TaskList({ onOpen }: Props) {
   useEffect(() => {
     refresh()
     api.getChannels().then(setChannels).catch((e) => setError((e as Error).message))
+    api.listBrands().then(setBrands).catch(() => undefined)
   }, [refresh])
 
   const create = async () => {
@@ -50,11 +53,13 @@ export default function TaskList({ onOpen }: Props) {
         brand_name: brandName.trim(),
         target_audience: audience.trim(),
         extra_requirements: extra.trim(),
+        brand_id: brandId === '' ? undefined : Number(brandId),
       })
       setTopic('')
       setBrandName('')
       setAudience('')
       setExtra('')
+      setBrandId('')
       await refresh()
     } catch (e) {
       setError((e as Error).message)
@@ -108,6 +113,17 @@ export default function TaskList({ onOpen }: Props) {
             </select>
           </label>
           <label className="field">
+            <span>品牌档案（记忆层）</span>
+            <select value={brandId} onChange={(e) => setBrandId(e.target.value === '' ? '' : Number(e.target.value))}>
+              <option value="">不使用品牌档案</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
             <span>品牌 / 产品名</span>
             <input value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="例如：暖芯" />
           </label>
@@ -150,7 +166,20 @@ export default function TaskList({ onOpen }: Props) {
             </thead>
             <tbody>
               {tasks.map((t) => (
-                <tr key={t.id} onClick={() => onOpen(t.id)} className="clickable">
+                <tr
+                  key={t.id}
+                  onClick={() => onOpen(t.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onOpen(t.id)
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`打开任务：${t.topic}`}
+                  className="clickable"
+                >
                   <td>#{t.id}</td>
                   <td>
                     <strong>{t.topic}</strong>
@@ -162,7 +191,7 @@ export default function TaskList({ onOpen }: Props) {
                   </td>
                   <td>¥{t.total_cost.toFixed(4)}</td>
                   <td>{t.total_latency.toFixed(1)}s</td>
-                  <td className="muted">{t.created_at}</td>
+                  <td className="muted">{formatTime(t.created_at)}</td>
                 </tr>
               ))}
             </tbody>

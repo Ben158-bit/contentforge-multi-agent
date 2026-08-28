@@ -17,64 +17,23 @@ from typing import Any
 from langgraph.types import Command
 
 from ..config import get_settings
-from .graph import thread_id_for
+from ..db_sql import (
+    clear_artifacts as _clear_artifacts,
+    conn as _sync_conn,
+    get_stage_metrics as _get_stage_metrics,
+    get_task_metrics as _get_task_metrics,
+    insert_artifact as _insert_artifact,
+    update_task as _update_task,
+    upsert_stage as _upsert_stage,
+)
+from ..memory import learn_from_confirmation
+from .graph import thread_id_for, update_pipeline_state
 from .nodes import STAGE_KEYS
 
 logger = logging.getLogger(__name__)
 
-
-def _sync_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(get_settings().data_path / "contentforge.db"))
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _exec(sql: str, params: tuple | list = ()) -> None:
-    conn = _sync_conn()
-    try:
-        conn.execute(sql, params)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _update_task(task_id: int, **fields: Any) -> None:
-    if not fields:
-        return
-    sets = ", ".join(f"{k} = ?" for k in fields)
-    _exec(
-        f"UPDATE tasks SET {sets}, updated_at = datetime('now', 'localtime') WHERE id = ?",
-        list(fields.values()) + [task_id],
-    )
-
-
-def _upsert_stage(task_id: int, stage_key: str, **fields: Any) -> None:
-    if not fields:
-        return
-    cols = ", ".join(fields.keys())
-    ph = ", ".join("?" for _ in fields)
-    set_clause = ", ".join(f"{k} = excluded.{k}" for k in fields)
-    _exec(
-        f"""INSERT INTO stages (task_id, stage_key, {cols}) VALUES (?, ?, {ph})
-            ON CONFLICT(task_id, stage_key) DO UPDATE SET {set_clause},
-                updated_at = datetime('now', 'localtime')""",
-        [task_id, stage_key] + list(fields.values()),
-    )
-
-
-def _clear_artifacts(task_id: int) -> None:
-    _exec("DELETE FROM artifacts WHERE task_id = ?", (task_id,))
-
-
-def _insert_artifact(task_id: int, stage_key: str, idx: int, content: Any) -> None:
-    if isinstance(content, str):
-        text = content
-    else:
-        text = json.dumps(content, ensure_ascii=False)
-    _exec(
-        "INSERT INTO artifacts (task_id, stage_key, variant_index, content) VALUES (?, ?, ?, ?)",
-        (task_id, stage_key, idx, text),
-    )
+# 上游阶段：编辑后会影响下游文案生成，confirm 时需回填并重跑下游
+UPSTREAM_STAGE_KEYS = ["research", "competitor", "strategy"]
 
 
 def _write_chunk(task_id: int, chunk: dict) -> None:
@@ -86,23 +45,73 @@ def _write_chunk(task_id: int, chunk: dict) -> None:
         if node_name in STAGE_KEYS:
             status = updates.get("stage_status", {}).get(node_name, "completed")
             output = json.dumps(updates.get(node_name, {}), ensure_ascii=False)
-            cost = updates.get("total_cost")
-            latency = updates.get("total_latency")
+            new_total = updates.get("total_cost")
+            if new_total is not None:
+                # 阶段成本 = 任务累计值的增量 + 该阶段已有累计（打回重跑时累加）
+                prev_cost, prev_latency = _get_task_metrics(task_id)
+                old_stage_cost, old_stage_latency = _get_stage_metrics(task_id, node_name)
+                new_latency = float(updates.get("total_latency", prev_latency))
+                stage_cost = round(old_stage_cost + (float(new_total) - prev_cost), 6)
+                stage_latency = round(old_stage_latency + (new_latency - prev_latency), 2)
+            else:
+                stage_cost = 0.0
+                stage_latency = 0.0
             _upsert_stage(
                 task_id, node_name,
                 status=status, output=output,
-                cost=cost if cost is not None else 0,
-                latency=latency if latency is not None else 0,
+                cost=stage_cost,
+                latency=stage_latency,
             )
             # 任务级累计统计实时回写
-            if cost is not None:
+            if new_total is not None:
                 _update_task(
                     task_id,
-                    total_cost=round(float(cost), 6),
-                    total_latency=round(float(latency or 0), 2),
+                    total_cost=round(float(new_total), 6),
+                    total_latency=round(float(updates.get("total_latency", 0)), 2),
                 )
             if status == "completed":
                 logger.info("任务 %s 阶段[%s]完成", task_id, node_name)
+
+
+def _load_edited_upstream_values(task_id: int) -> tuple[dict | None, str | None]:
+    """读取被人工编辑的上游阶段（research/competitor/strategy）产出。
+
+    Returns:
+        (values, earliest)：values 为可写回 checkpoint 的编辑值（stage_key -> dict），
+        earliest 为最早被编辑的阶段 key（按流水线顺序），无编辑时为 (None, None)。
+    """
+    conn = _sync_conn()
+    try:
+        rows = conn.execute(
+            "SELECT stage_key, status, output FROM stages "
+            "WHERE task_id = ? AND stage_key IN ('research', 'competitor', 'strategy')",
+            (task_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_key = {r["stage_key"]: r for r in rows}
+    values: dict = {}
+    earliest: str | None = None
+    for key in UPSTREAM_STAGE_KEYS:
+        row = by_key.get(key)
+        if row is None or row["status"] != "edited":
+            continue
+        if earliest is None:
+            earliest = key
+        raw = row["output"] or ""
+        try:
+            values[key] = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            logger.warning("任务 %s 阶段[%s]编辑内容解析失败，跳过回填", task_id, key)
+            continue
+    return (values or None), earliest
+
+
+def _mark_upstream_applied(task_id: int, keys: list[str]) -> None:
+    """把已回填进流水线的编辑阶段标记为 completed（编辑已被下游采纳）。"""
+    for key in keys:
+        _upsert_stage(task_id, key, status="completed")
 
 
 def run_task_pipeline(graph, task_id: int, initial_state: dict) -> str:
@@ -124,22 +133,61 @@ def run_task_pipeline(graph, task_id: int, initial_state: dict) -> str:
     return "waiting_human"
 
 
+def learn_and_confirm(graph, task_id: int, confirmation: dict) -> str:
+    """纠错学习 + 确认恢复：用户勾选学习时，先对比 AI 原版与定稿提取偏好规则
+    入库，再执行确认流程（无差异时 learn_from_confirmation 自动跳过，不耗 LLM）。"""
+    brand_id = confirmation.get("brand_id")
+    if brand_id:
+        cfg = {"configurable": {"thread_id": thread_id_for(task_id)}}
+        snap = graph.get_state(cfg)
+        ai_variants = (snap.values or {}).get("copywriting", [])
+        learn_from_confirmation(
+            brand_id, ai_variants, confirmation.get("variants", []),
+            source_task=task_id,
+        )
+    return confirm_pipeline(graph, task_id, confirmation)
+
+
 def confirm_pipeline(graph, task_id: int, confirmation: dict) -> str:
     """提交人工确认：写最终工件 + 恢复执行到完成。
+
+    编辑回填：若用户编辑过上游阶段（research/competitor/strategy），
+    先把编辑值写回 checkpoint，并把执行位置重定位到最早编辑阶段之后，
+    重新执行下游（copywriting→review→human_confirm），使编辑真正影响文案；
+    重跑后任务回到 waiting_human，等待用户对新文案再次确认。
 
     Args:
         confirmation: 前端提交的确认内容（含编辑后的 variants）
 
     Returns:
-        任务最终状态（'completed' 或 'failed'）。
+        任务最终状态（'completed' / 'waiting_human' / 'failed'）。
     """
     variants = confirmation.get("variants", [])
     _clear_artifacts(task_id)
     for i, v in enumerate(variants):
         _insert_artifact(task_id, "copywriting", i, v)
 
-    _update_task(task_id, status="running")
     cfg = {"configurable": {"thread_id": thread_id_for(task_id)}}
+
+    # 1. 上游编辑回填：编辑真正生效（从最早编辑阶段之后重跑下游）
+    values, earliest = _load_edited_upstream_values(task_id)
+    if earliest and values:
+        update_pipeline_state(graph, task_id, values, as_node=earliest)
+        _mark_upstream_applied(task_id, list(values.keys()))
+        _update_task(task_id, status="running")
+        try:
+            for chunk in graph.stream(None, cfg):
+                _write_chunk(task_id, chunk)
+        except Exception:
+            logger.exception("任务 %s 编辑回填后重跑下游失败", task_id)
+            _update_task(task_id, status="failed")
+            return "failed"
+        # 重跑下游后再次到达人工确认点，等待用户对新文案确认
+        _update_task(task_id, status="waiting_human")
+        return "waiting_human"
+
+    # 2. 无上游编辑：正常恢复执行到完成
+    _update_task(task_id, status="running")
     try:
         for chunk in graph.stream(Command(resume=confirmation), cfg):
             _write_chunk(task_id, chunk)
@@ -170,3 +218,52 @@ def rerun_pipeline(graph, task_id: int, initial_state: dict) -> str:
         _upsert_stage(task_id, key, status="pending", output="", feedback="",
                       revision_round=0, cost=0, latency=0)
     return run_task_pipeline(graph, task_id, initial_state)
+
+
+# ===================== 可靠性：看门狗与启动恢复 =====================
+
+def fail_stale_running_tasks(deadline_minutes: int) -> int:
+    """把超过 deadline 仍未推进的 running 任务置 failed，返回处理数量。"""
+    conn = _sync_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id FROM tasks WHERE status = 'running' "
+            "AND updated_at < datetime('now', ?)",
+            (f"-{max(int(deadline_minutes), 1)} minutes",),
+        ).fetchall()
+    finally:
+        conn.close()
+    for row in rows:
+        logger.warning("任务 %s 超过任务级 deadline，置为 failed", row["id"])
+        _update_task(row["id"], status="failed")
+    return len(rows)
+
+
+def recover_running_tasks() -> int:
+    """启动恢复：处理进程重启遗留的 running 任务。
+
+    规则（近似 checkpoint 语义）：
+    - review 阶段已完成 → 流水线已到人工确认点（human_confirm 前后崩溃）
+      → 恢复为 waiting_human（用户可再次确认）
+    - 否则 → 执行中崩溃，置 failed（用户可 rerun 重试）
+    """
+    conn = _sync_conn()
+    try:
+        rows = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
+        result = []
+        for row in rows:
+            task_id = row["id"]
+            review = conn.execute(
+                "SELECT status FROM stages WHERE task_id = ? AND stage_key = 'review'",
+                (task_id,),
+            ).fetchone()
+            if review is not None and review["status"] == "completed":
+                result.append((task_id, "waiting_human"))
+            else:
+                result.append((task_id, "failed"))
+    finally:
+        conn.close()
+    for task_id, status in result:
+        logger.info("启动恢复：任务 %s 遗留 running → %s", task_id, status)
+        _update_task(task_id, status=status)
+    return len(result)

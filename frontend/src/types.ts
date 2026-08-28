@@ -62,3 +62,15 @@ export interface Stats {
   avg_cost: number
   avg_latency: number
 }
+
+export interface Brand {
+  id: number
+  name: string
+  tone: string
+  core_claims: string
+  audience: string
+  taboos: string
+  notes: string
+  pref_count?: number
+  preferences?: { id: number; rule_text: string; source_task: number | null; created_at: string }[]
+}

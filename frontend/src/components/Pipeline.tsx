@@ -20,6 +20,15 @@ export function statusLabel(status: Task['status']): string {
   return map[status] ?? status
 }
 
+/** 把后端返回的 UTC 时间字符串（YYYY-MM-DD HH:MM:SS）转换为本地时间展示。 */
+export function formatTime(utcStr: string): string {
+  if (!utcStr) return ''
+  const d = new Date(utcStr.replace(' ', 'T') + 'Z')
+  if (Number.isNaN(d.getTime())) return utcStr
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 /** 任务状态徽章。 */
 export function StatusBadge({ status }: { status: Task['status'] }) {
   return <span className={`badge badge-${status}`}>{statusLabel(status)}</span>

@@ -15,8 +15,17 @@ from fastapi.responses import StreamingResponse
 
 from .. import repository as repo
 from ..agents.nodes import STAGE_KEYS, STAGE_LABELS
-from ..agents.runner import confirm_pipeline, rerun_pipeline, run_task_pipeline
-from ..schemas import ChannelOut, ConfirmRequest, ProjectCreate, StageEdit, TaskCreate
+from ..agents.runner import confirm_pipeline, learn_and_confirm, rerun_pipeline, run_task_pipeline
+from ..config import get_settings
+from ..schemas import (
+    BrandCreate,
+    BrandUpdate,
+    ChannelOut,
+    ConfirmRequest,
+    ProjectCreate,
+    StageEdit,
+    TaskCreate,
+)
 from ..templates import list_channels
 
 logger = logging.getLogger(__name__)
@@ -28,6 +37,9 @@ SSE_POLL_INTERVAL = 1.5
 
 # 允许的编辑阶段（strategy/copywriting 是人工干预价值最高的两个）
 EDITABLE_STAGES = {"research", "competitor", "strategy", "copywriting", "review"}
+
+# 后台流水线并发上限（信号量，超出排队）
+_task_slots = asyncio.Semaphore(get_settings().max_concurrent_tasks)
 
 
 def _get_graph(request: Request):
@@ -58,7 +70,24 @@ def _decode_artifact_content(artifact: dict) -> Any:
 
 @router.get("/health")
 async def health(request: Request) -> dict:
-    return {"status": "ok", "graph_ready": getattr(request.app.state, "graph", None) is not None}
+    # DB 连通性探活（进程活着 ≠ 数据库可用）
+    from ..db import get_conn
+
+    db_ok = False
+    try:
+        conn = await get_conn()
+        try:
+            await conn.execute("SELECT 1")
+        finally:
+            await conn.close()
+        db_ok = True
+    except Exception:
+        logger.warning("health 检查：数据库不可达")
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "graph_ready": getattr(request.app.state, "graph", None) is not None,
+        "db_ok": db_ok,
+    }
 
 
 @router.get("/channels", response_model=list[ChannelOut])
@@ -83,6 +112,49 @@ async def list_projects() -> list[dict]:
     return await repo.list_projects()
 
 
+# ===================== 品牌 Brands（记忆层）=====================
+
+@router.post("/brands", status_code=201)
+async def create_brand(body: BrandCreate) -> dict:
+    existing = await repo.get_brand_by_name(body.name)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"品牌已存在: {body.name}")
+    bid = await repo.create_brand(
+        body.name, body.tone, body.core_claims, body.audience, body.taboos, body.notes
+    )
+    return await repo.get_brand(bid)
+
+
+@router.get("/brands")
+async def list_brands() -> list[dict]:
+    return await repo.list_brands()
+
+
+@router.get("/brands/{brand_id}")
+async def get_brand(brand_id: int) -> dict:
+    brand = await repo.get_brand(brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="品牌不存在")
+    brand["preferences"] = await repo.list_brand_preferences(brand_id)
+    return brand
+
+
+@router.put("/brands/{brand_id}")
+async def update_brand(brand_id: int, body: BrandUpdate) -> dict:
+    if not await repo.get_brand(brand_id):
+        raise HTTPException(status_code=404, detail="品牌不存在")
+    await repo.update_brand(brand_id, **body.model_dump(exclude_none=True))
+    return await repo.get_brand(brand_id)
+
+
+@router.delete("/brands/{brand_id}")
+async def delete_brand(brand_id: int) -> dict:
+    if not await repo.get_brand(brand_id):
+        raise HTTPException(status_code=404, detail="品牌不存在")
+    await repo.delete_brand(brand_id)
+    return {"ok": True}
+
+
 # ===================== 任务 =====================
 
 async def _task_detail(task_id: int) -> Optional[dict]:
@@ -102,10 +174,32 @@ async def _task_detail(task_id: int) -> Optional[dict]:
 
 async def _run_background(app, task_id: int, initial_state: dict) -> None:
     """后台执行流水线（不阻塞请求）。"""
-    try:
-        await asyncio.to_thread(run_task_pipeline, app.state.graph, task_id, initial_state)
-    except Exception:
-        logger.exception("任务 %s 后台执行异常", task_id)
+    async with _task_slots:
+        try:
+            await asyncio.to_thread(run_task_pipeline, app.state.graph, task_id, initial_state)
+        except Exception:
+            logger.exception("任务 %s 后台执行异常", task_id)
+
+
+async def _run_confirm_background(app, graph, task_id: int, confirmation: dict) -> None:
+    """后台执行人工确认恢复（不阻塞请求）；勾选学习时先执行纠错学习。"""
+    async with _task_slots:
+        try:
+            if confirmation.get("learn") and confirmation.get("brand_id"):
+                await asyncio.to_thread(learn_and_confirm, graph, task_id, confirmation)
+            else:
+                await asyncio.to_thread(confirm_pipeline, graph, task_id, confirmation)
+        except Exception:
+            logger.exception("任务 %s 后台确认异常", task_id)
+
+
+async def _run_rerun_background(app, graph, task_id: int, initial_state: dict) -> None:
+    """后台执行任务重跑（不阻塞请求）。"""
+    async with _task_slots:
+        try:
+            await asyncio.to_thread(rerun_pipeline, graph, task_id, initial_state)
+        except Exception:
+            logger.exception("任务 %s 后台重跑异常", task_id)
 
 
 @router.post("/tasks", status_code=201)
@@ -118,12 +212,14 @@ async def create_task(body: TaskCreate, request: Request) -> dict:
         body.topic, body.channel_id, project_id=body.project_id,
         brand_name=body.brand_name, target_audience=body.target_audience,
         extra_requirements=body.extra_requirements,
+        brand_id=body.brand_id,
     )
     for key in STAGE_KEYS:
         await repo.upsert_stage(task_id, key, status="pending")
 
     initial_state = {
         "task_id": task_id,
+        "brand_id": body.brand_id,
         "input": {
             "topic": body.topic,
             "brand_name": body.brand_name,
@@ -139,13 +235,8 @@ async def create_task(body: TaskCreate, request: Request) -> dict:
 
 @router.get("/tasks")
 async def list_tasks() -> list[dict]:
-    tasks = await repo.list_tasks()
-    for t in tasks:
-        stages = await repo.list_stages(t["id"])
-        t["stages"] = [
-            {"stage_key": s["stage_key"], "status": s["status"]} for s in stages
-        ]
-    return tasks
+    # 单次 JOIN 批量取阶段状态，避免逐任务查询（N+1）
+    return await repo.list_tasks_with_stages()
 
 
 @router.get("/tasks/{task_id}")
@@ -175,10 +266,12 @@ async def edit_stage(task_id: int, stage_key: str, body: StageEdit, request: Req
             raise HTTPException(status_code=400, detail="variants 仅适用于 copywriting 阶段")
         await repo.delete_artifacts(task_id, "copywriting")
         for i, v in enumerate(body.variants):
-            await repo.create_artifact(task_id, "copywriting", i, v)
+            await repo.create_artifact(
+                task_id, "copywriting", i, json.dumps(v, ensure_ascii=False)
+            )
         await repo.upsert_stage(
             task_id, stage_key,
-            output=json.dumps({"variants": body.variants}, ensure_ascii=False),
+            output=json.dumps(body.variants, ensure_ascii=False),
             status="edited",
         )
     return await _task_detail(task_id)
@@ -199,12 +292,16 @@ async def confirm_task(task_id: int, body: ConfirmRequest, request: Request) -> 
         raw = stage.get("output") or ""
         try:
             parsed = json.loads(raw)
-            body.variants = parsed.get("variants", [])
         except json.JSONDecodeError:
-            body.variants = []
+            parsed = []
+        if isinstance(parsed, list):
+            body.variants = parsed
+        else:
+            body.variants = parsed.get("variants", [])
 
-    confirmation = {"variants": body.variants}
-    await asyncio.to_thread(confirm_pipeline, graph, task_id, confirmation)
+    confirmation = {"variants": body.variants, "learn": body.learn, "brand_id": body.brand_id}
+    # 后台执行（可能触发纠错学习 / 编辑回填重跑下游），立即返回当前状态
+    asyncio.create_task(_run_confirm_background(request.app, graph, task_id, confirmation))
     return await _task_detail(task_id)
 
 
@@ -217,6 +314,7 @@ async def rerun_task(task_id: int, request: Request) -> dict:
 
     initial_state = {
         "task_id": task_id,
+        "brand_id": task["brand_id"],
         "input": {
             "topic": task["topic"],
             "brand_name": task["brand_name"],
@@ -225,7 +323,8 @@ async def rerun_task(task_id: int, request: Request) -> dict:
             "extra_requirements": task["extra_requirements"],
         },
     }
-    await asyncio.to_thread(rerun_pipeline, graph, task_id, initial_state)
+    # 后台执行（整条流水线重跑，耗时较长），立即返回当前状态
+    asyncio.create_task(_run_rerun_background(request.app, graph, task_id, initial_state))
     return await _task_detail(task_id)
 
 

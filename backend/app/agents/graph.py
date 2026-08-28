@@ -115,3 +115,13 @@ def get_pipeline_state(graph, task_id: int) -> Optional[dict]:
     values: dict[str, Any] = dict(snap.values or {})
     values["next"] = list(snap.next or [])
     return values
+
+
+def update_pipeline_state(graph, task_id: int, values: dict, as_node: str) -> None:
+    """更新 checkpoint 状态，并把执行位置重定位到 as_node 之后。
+
+    用于人工编辑回填：用户编辑上游阶段后，把编辑值写回状态，
+    下一次 stream(None) 会从 as_node 的下游节点重新执行。
+    """
+    cfg = {"configurable": {"thread_id": thread_id_for(task_id)}}
+    graph.update_state(cfg, values, as_node=as_node)

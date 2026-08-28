@@ -29,6 +29,7 @@ class AgentState(TypedDict, total=False):
     # 任务信息
     task_id: int
     input: TaskInput
+    brand_id: Optional[int]  # 关联的品牌档案 id（记忆层，可空）
 
     # 各阶段产出
     research: dict[str, Any]        # 市场调研

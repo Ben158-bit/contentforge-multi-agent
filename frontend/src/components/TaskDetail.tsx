@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, subscribeTask } from '../api'
 import type { CopyVariant, Stage, Task } from '../types'
-import { parseVariants, Pipeline, StatusBadge, STAGES } from './Pipeline'
+import { parseVariants, Pipeline, StatusBadge, STAGES, formatTime, statusLabel } from './Pipeline'
 
 interface Props {
   taskId: number
@@ -14,6 +14,10 @@ export default function TaskDetail({ taskId }: Props) {
   const [variants, setVariants] = useState<CopyVariant[]>([])
   const [editingStage, setEditingStage] = useState<Stage['stage_key'] | null>(null)
   const [stageDraft, setStageDraft] = useState('')
+  const [brands, setBrands] = useState<{ id: number; name: string }[]>([])
+  const [dirty, setDirty] = useState(false)
+  const [learn, setLearn] = useState(false)
+  const [learnBrandId, setLearnBrandId] = useState<number | ''>('')
   const subscribedRef = useRef(false)
 
   const load = useCallback(async () => {
@@ -26,11 +30,10 @@ export default function TaskDetail({ taskId }: Props) {
     }
   }, [taskId])
 
-  // 首屏加载 + 轮询兜底（SSE 断开时）
+  // 首屏加载（后续由 SSE 实时推送；done 时重载一次）
   useEffect(() => {
     load()
-    const timer = window.setInterval(load, 5000)
-    return () => window.clearInterval(timer)
+    api.listBrands().then(setBrands).catch(() => undefined)
   }, [load])
 
   // SSE 实时订阅
@@ -67,13 +70,16 @@ export default function TaskDetail({ taskId }: Props) {
   }
 
   const updateVariant = (index: number, field: keyof CopyVariant, value: string | string[]) => {
+    setDirty(true)
     setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)))
   }
 
   const confirm = async () => {
     setBusy(true)
     try {
-      await api.confirmTask(taskId, variants)
+      const brandId = learn && learnBrandId !== '' ? Number(learnBrandId) : undefined
+      await api.confirmTask(taskId, variants, learn && !!brandId, brandId)
+      setDirty(false)
       await load()
     } catch (e) {
       setError((e as Error).message)
@@ -169,11 +175,14 @@ export default function TaskDetail({ taskId }: Props) {
             </h2>
             <p className="muted">
               渠道：{task.channel_id} · 目标受众：{task.target_audience || '未指定'} ·{' '}
-              创建于 {task.created_at}
+              创建于 {formatTime(task.created_at)}
             </p>
           </div>
           <div className="task-head-right">
             <StatusBadge status={task.status} />
+            <span className="sr-only" aria-live="polite" aria-atomic="true">
+              {statusLabel(task.status)}
+            </span>
             <div className="metrics">
               <span>成本 ¥{task.total_cost.toFixed(4)}</span>
               <span>耗时 {task.total_latency.toFixed(1)}s</span>
@@ -274,9 +283,31 @@ export default function TaskDetail({ taskId }: Props) {
           </div>
         )}
         {waitingHuman && variants.length > 0 && (
-          <button className="btn primary" onClick={confirm} disabled={busy}>
-            {busy ? '处理中…' : '✓ 确认定稿并完成'}
-          </button>
+          <div className="confirm-area">
+            {dirty && (
+              <label className="learn-option">
+                <input
+                  type="checkbox"
+                  checked={learn}
+                  onChange={(e) => setLearn(e.target.checked)}
+                />
+                <span>把本次修改记入品牌偏好（纠错学习）</span>
+                {learn && (
+                  <select value={learnBrandId} onChange={(e) => setLearnBrandId(e.target.value === '' ? '' : Number(e.target.value))}>
+                    <option value="">选择品牌…</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </label>
+            )}
+            <button className="btn primary" onClick={confirm} disabled={busy}>
+              {busy ? '处理中…' : '✓ 确认定稿并完成'}
+            </button>
+          </div>
         )}
       </section>
     </div>

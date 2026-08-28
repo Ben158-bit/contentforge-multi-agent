@@ -35,13 +35,30 @@ def test_fake_llm_keyword_routing():
     assert "variants" in data and len(data["variants"]) >= 1
 
 
-def test_fake_llm_review_rounds():
-    """演示审校：第一次不通过，之后通过。"""
+def test_fake_llm_review_depends_on_copy():
+    """演示审校（无状态）：待审文案含 CTA 才通过，否则打回。"""
     fake = FakeLLMClient()
-    r1 = fake.chat([{"role": "user", "content": "你是营销内容生产流水线中的【内容审校专家】"}])
+    r1 = fake.chat([{"role": "user", "content": (
+        "你是营销内容生产流水线中的【内容审校专家】\n"
+        "待审文案变体：\n[{\"title\": \"t\", \"body\": \"无行动号召\"}]"
+    )}])
     assert json.loads(r1.content)["passed"] is False
-    r2 = fake.chat([{"role": "user", "content": "你是营销内容生产流水线中的【内容审校专家】"}])
+    r2 = fake.chat([{"role": "user", "content": (
+        "你是营销内容生产流水线中的【内容审校专家】\n"
+        "待审文案变体：\n[{\"title\": \"t\", \"body\": \"限时立减，立即下单\"}]"
+    )}])
     assert json.loads(r2.content)["passed"] is True
+
+
+def test_fake_llm_stateless_concurrent():
+    """无状态：交错调用审校时结果只取决于各自 prompt，互不污染。"""
+    fake = FakeLLMClient()
+    fail_prompt = "【内容审校专家】\n待审文案变体：\n[{\"body\": \"无CTA\"}]"
+    pass_prompt = "【内容审校专家】\n待审文案变体：\n[{\"body\": \"立即下单\"}]"
+    assert json.loads(fake.chat([{"role": "user", "content": fail_prompt}]).content)["passed"] is False
+    assert json.loads(fake.chat([{"role": "user", "content": pass_prompt}]).content)["passed"] is True
+    assert json.loads(fake.chat([{"role": "user", "content": fail_prompt}]).content)["passed"] is False
+    assert json.loads(fake.chat([{"role": "user", "content": fail_prompt}]).content)["passed"] is False
 
 
 def test_full_pipeline_with_demo_mode(tmp_path, monkeypatch):
