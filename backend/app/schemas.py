@@ -60,3 +60,29 @@ class ChannelOut(BaseModel):
     desc: str = ""
     tone: str = ""
     max_chars: int = 0
+
+
+# ===================== 效果闭环 Feedback =====================
+
+class FeedbackIn(BaseModel):
+    views: int = Field(0, ge=0)
+    conversions: int = Field(0, ge=0)
+    score: float = Field(0, ge=0, le=5)
+    note: str = Field("", max_length=500)
+
+
+class FeedbackOut(BaseModel):
+    content_id: int
+    views: int
+    conversions: int
+    score: float
+    is_simulated: int
+    note: str
+    created_at: str
+
+
+class FeedbackRuleOut(BaseModel):
+    id: int
+    rule_text: str
+    strength: float
+    created_at: str

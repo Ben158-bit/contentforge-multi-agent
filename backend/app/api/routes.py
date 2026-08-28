@@ -17,11 +17,14 @@ from .. import repository as repo
 from ..agents.nodes import STAGE_KEYS, STAGE_LABELS
 from ..agents.runner import confirm_pipeline, learn_and_confirm, rerun_pipeline, run_task_pipeline
 from ..config import get_settings
+from ..feedback import simulate_feedback_for_task
 from ..schemas import (
     BrandCreate,
     BrandUpdate,
     ChannelOut,
     ConfirmRequest,
+    FeedbackIn,
+    FeedbackRuleOut,
     ProjectCreate,
     StageEdit,
     TaskCreate,
@@ -393,3 +396,67 @@ async def stats() -> dict:
         "avg_cost": round(total_cost / len(completed), 6) if completed else 0.0,
         "avg_latency": round(total_latency / len(completed), 2) if completed else 0.0,
     }
+
+
+# ===================== 效果闭环 =====================
+
+_FEEDBACK_FIELDS = ("content_id", "views", "conversions", "score",
+                    "is_simulated", "note", "created_at")
+
+
+def _feedback_payload(row: dict) -> dict:
+    return {k: row[k] for k in _FEEDBACK_FIELDS}
+
+
+@router.post("/tasks/{task_id}/feedback", response_model=dict)
+async def submit_feedback(task_id: int, body: FeedbackIn, request: Request) -> dict:
+    """手动回填效果数据（幂等 upsert）。"""
+    task = await repo.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    await repo.upsert_content_feedback(
+        task_id, views=body.views, conversions=body.conversions,
+        score=body.score, note=body.note)
+    row = await repo.get_content_feedback(task_id)
+    return _feedback_payload(row)
+
+
+@router.post("/tasks/{task_id}/feedback/simulate", response_model=dict)
+async def simulate_feedback(task_id: int, request: Request) -> dict:
+    """一键生成模拟效果数据（特征相关，标记 is_simulated=1 不进入规律基线）。"""
+    task = await repo.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    stages = await repo.list_stages(task_id)
+    task["stages"] = stages
+    sim = await asyncio.to_thread(simulate_feedback_for_task, task)
+    await repo.upsert_content_feedback(
+        task_id, views=sim["views"], conversions=sim["conversions"],
+        score=sim["score"], is_simulated=1,
+        note="模拟效果（演示用，不进入规律基线）")
+    row = await repo.get_content_feedback(task_id)
+    return _feedback_payload(row)
+
+
+@router.get("/tasks/{task_id}/feedback", response_model=dict)
+async def get_feedback(task_id: int) -> dict:
+    row = await repo.get_content_feedback(task_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="尚无效果数据")
+    return _feedback_payload(row)
+
+
+@router.get("/brands/{brand_id}/feedback-rules", response_model=list[FeedbackRuleOut])
+async def list_feedback_rules(brand_id: int) -> list[dict]:
+    prefs = await repo.list_brand_preferences(brand_id)
+    return [
+        {"id": p["id"], "rule_text": p["rule_text"], "strength": p["strength"],
+         "created_at": p["created_at"]}
+        for p in prefs if p.get("source") == "feedback"
+    ]
+
+
+@router.delete("/brands/{brand_id}/feedback-rules/{rule_id}")
+async def delete_feedback_rule(brand_id: int, rule_id: int) -> dict:
+    await repo.delete_feedback_rule(brand_id, rule_id)
+    return {"ok": True}

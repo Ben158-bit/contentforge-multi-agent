@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import re
 from typing import Any, Callable, Optional
 
@@ -136,3 +137,35 @@ async def learn_from_feedback(brand_id: int, rules: list[dict]) -> int:
             added += 1
     logger.info("品牌 %s 效果学习：新增 %d 条规律", brand_id, added)
     return added
+
+
+def _content_text_of(task: dict) -> dict:
+    """从任务的 copywriting 阶段 output 取文案结构（title/body/sources）。"""
+    for s in task.get("stages", []) or []:
+        if s.get("stage_key") == "copywriting" and s.get("output"):
+            out = s["output"]
+            if isinstance(out, dict) and out.get("variants"):
+                variants = out["variants"]
+                return variants[0] if isinstance(variants, list) and variants else out
+            if isinstance(out, list) and out:
+                return out[0]
+    return {}
+
+
+def simulate_feedback_for_task(task: dict) -> dict:
+    """基于任务内容特征生成模拟效果数据（演示用，不进入规律基线）。"""
+    content = _content_text_of(task)
+    f = extract_features(content)
+    score = 2.0 + random.random() * 1.5
+    if f["has_num"]:
+        score += 0.5
+    if f["has_question"]:
+        score += 0.4
+    if f["bullet_count"] >= 3:
+        score += 0.3
+    if f["has_sources"]:
+        score += 0.3
+    score = round(min(5.0, score), 1)
+    views = int(500 + score * 800 + random.random() * 1000)
+    conversions = int(views * (0.02 + score * 0.01))
+    return {"views": views, "conversions": conversions, "score": score}

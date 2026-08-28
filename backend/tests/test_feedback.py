@@ -109,3 +109,98 @@ async def test_learn_from_feedback_merge_and_inject():
     await repo.add_brand_preference(bid, "普通人工规则", source="manual", strength=0.5)
     ctx = get_brand_context(bid, max_rules=5)
     assert ctx["preferences"][0] == "标题含数字点击率高"
+
+
+# ===================== API 全链路 =====================
+
+os.environ["DEEPSEEK_API_KEY"] = "sk-test"  # 让 lifespan 能构建图
+
+import json  # noqa: E402
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.agents.graph import build_graph  # noqa: E402
+from app.main import app  # noqa: E402
+
+# FakeLLM 响应（对齐 test_api.py）：让流水线可跑到 copywriting/确认
+_FB_RESEARCH = json.dumps({"summary": "s", "trends": ["t"], "audience_insights": ["a"],
+                           "pain_points": ["p"], "keywords": ["k"]}, ensure_ascii=False)
+_FB_COMPETITOR = json.dumps({"competitors": [], "gaps": ["g"]}, ensure_ascii=False)
+_FB_STRATEGY = json.dumps({"target_audience": "白领", "core_value_proposition": "v",
+                           "key_messages": ["m"], "tone_guidance": "g",
+                           "content_angles": ["a"], "channel_strategy": "s"}, ensure_ascii=False)
+_FB_COPY = json.dumps({"variants": [{"title": "3 个保温杯选购技巧，为什么买贵不如买对？",
+                                     "body": "第一点：看材质。第二点：看保温时长。第三点：看密封性。",
+                                     "hashtags": [], "notes": "n"}]}, ensure_ascii=False)
+_FB_REVIEW = json.dumps({"passed": True, "feedback": "", "checklist": []}, ensure_ascii=False)
+
+
+class _ApiFakeLLM:
+    """对齐 test_api.py 的 FakeLLM（chat 接口 + 响应序列）。"""
+
+    def __init__(self, responses):
+        self.responses = responses
+        self.calls = 0
+
+    def chat(self, messages, **kwargs):
+        content = self.responses[self.calls]
+        self.calls += 1
+        return LLMResult(content=content, model="fake", prompt_tokens=100,
+                         completion_tokens=50, latency_seconds=0.01)
+
+
+@pytest.fixture()
+def client(tmp_path):
+    with TestClient(app) as c:
+        # 必须在 lifespan 之后注入，否则被真实 graph 覆盖
+        fake = _ApiFakeLLM([_FB_RESEARCH, _FB_COMPETITOR, _FB_STRATEGY, _FB_COPY, _FB_REVIEW] * 2)
+        app.state.graph = build_graph(fake, db_path=tmp_path / "ckpt.db")
+        yield c
+
+
+def test_feedback_api_flow(client):
+    r = client.post("/api/projects", json={"name": "P"})
+    assert r.status_code == 201
+    r = client.post("/api/tasks", json={"topic": "保温杯", "channel_id": "xiaohongshu"})
+    assert r.status_code == 201
+    tid = r.json()["id"]
+
+    # 手动回填
+    r = client.post(f"/api/tasks/{tid}/feedback",
+                    json={"views": 1200, "conversions": 42, "score": 3.8})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["views"] == 1200 and body["is_simulated"] == 0
+
+    # 重复回填 → 幂等更新
+    r = client.post(f"/api/tasks/{tid}/feedback",
+                    json={"views": 1500, "conversions": 50, "score": 4.1})
+    body = r.json()
+    assert body["views"] == 1500
+
+    # 模拟回填（特征相关，score 在 0-5）
+    r = client.post(f"/api/tasks/{tid}/feedback/simulate")
+    assert r.status_code == 200
+    sim = r.json()
+    assert sim["is_simulated"] == 1
+    assert 0 <= sim["score"] <= 5
+
+    # 读取
+    r = client.get(f"/api/tasks/{tid}/feedback")
+    assert r.status_code == 200
+    assert r.json()["is_simulated"] == 1
+
+    # 规律列表（无 feedback 规律 → 空）
+    import uuid as _uuid
+    bid = client.post("/api/brands",
+                      json={"name": f"反馈暖芯-{_uuid.uuid4().hex[:6]}"}).json()["id"]
+    r = client.get(f"/api/brands/{bid}/feedback-rules")
+    assert r.status_code == 200 and r.json() == []
+
+    # 删除规律（不存在时静默成功）
+    r = client.delete(f"/api/brands/{bid}/feedback-rules/999")
+    assert r.status_code == 200 and r.json() == {"ok": True}
+
+    # 不存在任务 → 404
+    r = client.post("/api/tasks/999999/feedback", json={"views": 1, "conversions": 0, "score": 1})
+    assert r.status_code == 404
