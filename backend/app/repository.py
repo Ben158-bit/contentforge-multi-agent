@@ -343,6 +343,35 @@ async def delete_feedback_rule(brand_id: int, rule_id: int) -> None:
         await conn.commit()
 
 
+async def merge_feedback_rule(brand_id: int, text: str, strength: float) -> int:
+    """同 brand + source='feedback' + 同 rule_text → 衰减加权累计 strength；否则新增。
+
+    返回 1=新增，0=合并（防规则爆炸：相同规律不重复入库）。
+    """
+    async with _conn_ctx() as conn:
+        cur = await conn.execute(
+            "SELECT id, strength FROM brand_preferences "
+            "WHERE brand_id = ? AND source = 'feedback' AND rule_text = ?",
+            (brand_id, text),
+        )
+        row = await cur.fetchone()
+        if row:
+            new_strength = round(row["strength"] + strength * 0.5, 2)
+            await conn.execute(
+                "UPDATE brand_preferences SET strength = ? WHERE id = ?",
+                (new_strength, row["id"]),
+            )
+            await conn.commit()
+            return 0
+        cur = await conn.execute(
+            "INSERT INTO brand_preferences (brand_id, rule_text, source, strength) "
+            "VALUES (?, ?, 'feedback', ?)",
+            (brand_id, text, strength),
+        )
+        await conn.commit()
+        return 1
+
+
 async def list_brand_preferences(brand_id: int, limit: Optional[int] = None) -> list[dict]:
     async with _conn_ctx() as conn:
         if limit is None:

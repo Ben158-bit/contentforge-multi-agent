@@ -82,3 +82,30 @@ def test_derive_feedback_rules_uses_stats():
     by_feature = {r["feature"]: r["strength"] for r in rules}
     assert by_feature["has_num"] > 0
     assert by_feature["has_emoji"] < 0
+
+
+# ===================== 入库合并 + 注入排序 =====================
+
+from app.feedback import learn_from_feedback  # noqa: E402
+from app.memory import get_brand_context  # noqa: E402
+
+
+async def test_learn_from_feedback_merge_and_inject():
+    bid = await repo.create_brand("反馈暖芯")
+    rules = [
+        {"feature": "has_num", "text": "标题含数字点击率高",
+         "strength": 1.5, "source": "feedback"},
+    ]
+    added = await learn_from_feedback(bid, rules)
+    assert added == 1
+    # 同文本再学一次 → 合并（strength 衰减加权），不新增行
+    added = await learn_from_feedback(bid, rules)
+    assert added == 0
+    prefs = await repo.list_brand_preferences(bid)
+    assert len(prefs) == 1
+    assert abs(prefs[0]["strength"] - 2.25) < 1e-6  # 1.5 + 1.5*0.5（衰减累计）
+
+    # 注入：feedback 高 strength 规则排最前
+    await repo.add_brand_preference(bid, "普通人工规则", source="manual", strength=0.5)
+    ctx = get_brand_context(bid, max_rules=5)
+    assert ctx["preferences"][0] == "标题含数字点击率高"

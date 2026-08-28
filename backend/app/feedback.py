@@ -10,6 +10,7 @@ import logging
 import re
 from typing import Any, Callable, Optional
 
+from app import repository as repo
 from app.config import get_llm_client
 
 logger = logging.getLogger(__name__)
@@ -121,3 +122,17 @@ def derive_feedback_rules(
             "strength": strength, "source": "feedback",
         })
     return rules
+
+
+async def learn_from_feedback(brand_id: int, rules: list[dict]) -> int:
+    """效果规律入库；与已有同文本 feedback 规则合并（衰减加权）。返回新增条数。"""
+    added = 0
+    for r in rules:
+        text = r.get("text", "").strip()
+        if not text or r.get("source") != "feedback":
+            continue
+        merged = await repo.merge_feedback_rule(brand_id, text, r.get("strength", 1.0))
+        if merged:
+            added += 1
+    logger.info("品牌 %s 效果学习：新增 %d 条规律", brand_id, added)
+    return added

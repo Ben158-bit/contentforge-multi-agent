@@ -171,7 +171,7 @@ def get_brand_context(brand_id: Optional[int], max_rules: int = 5) -> Optional[d
             return None
         prefs = conn.execute(
             "SELECT rule_text FROM brand_preferences WHERE brand_id = ? "
-            "ORDER BY id DESC LIMIT ?",
+            "ORDER BY (source = 'feedback') DESC, ABS(strength) DESC, id DESC LIMIT ?",
             (brand_id, max_rules),
         ).fetchall()
         return {
