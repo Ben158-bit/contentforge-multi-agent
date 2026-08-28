@@ -5,9 +5,12 @@ LLM 只做规律归纳且输入仅限真实统计；任何失败静默降级，�
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
-from typing import Any
+from typing import Any, Callable, Optional
+
+from app.config import get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -44,3 +47,77 @@ def extract_features(content: dict) -> dict[str, Any]:
         "bullet_count": bullet_count,
         "has_sources": 1 if content.get("sources") else 0,
     }
+
+
+_FEATURE_LABELS = {
+    "has_num": "标题含数字",
+    "has_question": "标题用提问句式",
+    "has_emoji": "标题含 emoji",
+    "has_emotion_word": "标题含情绪词",
+    "bullet_count": "正文要点式分段",
+    "has_sources": "正文附来源引用",
+}
+
+
+def _strength_from_stats(high_ratio: float, low_ratio: float) -> float:
+    """由高/低分组出现率差异映射强度（-2~+2），0 表示无差异。"""
+    diff = high_ratio - low_ratio
+    return round(max(-2.0, min(2.0, diff * 4.0)), 2)
+
+
+def _feature_stats(high_group: list[dict], low_group: list[dict]) -> dict[str, tuple[float, float]]:
+    """输入高/低分组特征列表，输出 {feature: (高分组出现率, 低分组出现率)}。"""
+    if not high_group or not low_group:
+        return {}
+    stats: dict[str, tuple[float, float]] = {}
+    for feat in _FEATURE_LABELS:
+        h = sum(1 for f in high_group if f.get(feat)) / len(high_group)
+        l = sum(1 for f in low_group if f.get(feat)) / len(low_group)
+        stats[feat] = (round(h, 2), round(l, 2))
+    return stats
+
+
+_RULES_SYSTEM = (
+    "你是内容效果分析师。根据给定的特征统计表（各特征在高分内容/低分内容中的出现率），"
+    "归纳 1-3 条可指导下次创作的效果规律。只允许基于表格数据，禁止臆造。"
+    "输出 JSON：{\"rules\":[{\"feature\":\"特征名\",\"text\":\"一句话规律\"}]}"
+)
+
+
+def derive_feedback_rules(
+    stats: dict[str, tuple[float, float]], llm: Optional[Callable] = None,
+) -> list[dict]:
+    """LLM 归纳规律文本；strength 由程序化计算（LLM 不产生数值）。失败返回空列表。"""
+    candidates = [
+        (feat, h, l) for feat, (h, l) in stats.items()
+        if abs(h - l) >= 0.2  # 只把有区分度的特征喂给 LLM
+    ]
+    if not candidates:
+        return []
+    llm = llm or get_llm_client()
+    table = "\n".join(
+        f"- {_FEATURE_LABELS[feat]}：高分 {h:.0%} / 低分 {l:.0%}" for feat, h, l in candidates)
+    try:
+        result = llm.chat(
+            [{"role": "system", "content": _RULES_SYSTEM},
+             {"role": "user", "content": f"特征统计表：\n{table}"}],
+            json_mode=True, temperature=0.2,
+        )
+        payload = json.loads(result.content)
+    except Exception:  # 静默降级：LLM 失败不阻断主流程
+        logger.warning("效果规律归纳失败，跳过本轮学习", exc_info=True)
+        return []
+    rules = []
+    for r in payload.get("rules", [])[:3]:
+        feat = r.get("feature")
+        if feat not in _FEATURE_LABELS:
+            continue
+        h, l = stats[feat]
+        strength = _strength_from_stats(h, l)
+        if strength == 0:
+            continue
+        rules.append({
+            "feature": feat, "text": r.get("text", ""),
+            "strength": strength, "source": "feedback",
+        })
+    return rules
