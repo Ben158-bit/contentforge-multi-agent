@@ -26,3 +26,23 @@ async def test_feedback_upsert_idempotent():
     assert row["views"] == 2000 and row["conversions"] == 60 and row["score"] == 4.0
     rows = await repo.list_content_feedback()
     assert len(rows) == 1  # 幂等：同 content_id 不新增
+
+
+# ===================== 特征提取 =====================
+
+from app.feedback import extract_features  # noqa: E402
+
+
+def test_extract_features():
+    content = {
+        "title": "3 个保温杯选购技巧，为什么买贵不如买对？",
+        "body": "第一点：看材质。\n第二点：看保温时长。\n第三点：看密封性。",
+        "hashtags": ["#保温杯", "#好物"],
+        "notes": "",
+    }
+    f = extract_features(content)
+    assert f["has_num"] == 1          # 标题含数字
+    assert f["has_question"] == 1     # 标题含问句
+    assert f["title_len"] == len("3 个保温杯选购技巧，为什么买贵不如买对？")
+    assert f["bullet_count"] == 3     # 正文要点数（按行/编号）
+    assert f["has_emoji"] == 0
