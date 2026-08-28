@@ -142,12 +142,45 @@ async def get_conn(db_path: Path | None = None) -> aiosqlite.Connection:
     return conn
 
 
+async def _repair_legacy_schema_migrations(conn: aiosqlite.Connection) -> None:
+    """兼容旧版 schema_migrations 表（version INTEGER）：重建为 TEXT 结构并迁移旧记录。
+
+    版本化迁移机制引入前的旧库，schema_migrations 表为 INTEGER version 结构
+    （记录 version=1）。新版以字符串版本号（'v1'/'v2'）写入，若直接 INSERT 会触发
+    ``datatype mismatch``，导致旧库升级后应用启动即崩。此函数检测旧结构并原地重建，
+    旧记录 version 1 → 'v1' 保留（applied_at 原值不变）。
+    """
+    cur = await conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+    )
+    row = await cur.fetchone()
+    if row is None or not row["sql"]:
+        return
+    normalized = " ".join(str(row["sql"]).split())
+    if "version text primary key" in normalized.lower():
+        return  # 已是新结构
+
+    cur = await conn.execute("SELECT version, applied_at FROM schema_migrations")
+    old_rows = await cur.fetchall()
+    await conn.execute("DROP TABLE schema_migrations")
+    await conn.execute(SCHEMA_MIGRATIONS_DDL)
+    for r in old_rows:
+        v = r["version"]
+        new_version = f"v{v}" if isinstance(v, int) else str(v)
+        await conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+            (new_version, r["applied_at"]),
+        )
+    logger.warning("检测到旧版 schema_migrations 表（INTEGER version），已重建为 TEXT 结构并迁移记录")
+
+
 async def init_db(db_path: Path | None = None) -> None:
     """初始化数据库：按版本顺序执行未应用的迁移（幂等）。"""
     conn = await get_conn(db_path)
     try:
         await conn.execute("PRAGMA journal_mode=WAL")
         await conn.execute(SCHEMA_MIGRATIONS_DDL)
+        await _repair_legacy_schema_migrations(conn)
         cur = await conn.execute("SELECT version FROM schema_migrations")
         applied = {r["version"] for r in await cur.fetchall()}
 

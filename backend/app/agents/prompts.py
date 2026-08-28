@@ -178,6 +178,7 @@ def build_copywriting_messages(
         f"- {k}: {v}" for k, v in guide.items()
     ) if guide else "（无额外指南）"
     brand_section = ""
+    brand_system_section = ""
     if brand_context:
         profile = {
             "品牌名": brand_context.get("name"),
@@ -194,11 +195,17 @@ def build_copywriting_messages(
             + "\n该品牌已沉淀的内容偏好（必须遵守）：\n"
             + "\n".join(f"- {r}" for r in prefs)
         )
+        # system 侧同步注入（system 约束权重更高）：要求所有变体实际体现
+        brand_system_section = (
+            "\n\n【品牌档案与已沉淀偏好（最高优先级，所有变体必须实际体现）】\n"
+            + "\n".join(lines)
+            + ("\n品牌偏好规则：\n" + "\n".join(f"- {r}" for r in prefs) if prefs else "")
+        )
     system = _sys(
         "文案创作专家",
         "依据策略与渠道规范创作营销文案，一次输出 2-3 个风格不同的变体。"
         "文案必须覆盖核心卖点、贴合渠道语调与结构要求、自然融入关键词。",
-    )
+    ) + brand_system_section
     user_input = _user_input(
         topic=inp.get("topic", ""),
         brand_name=inp.get("brand_name", "未指定"),

@@ -181,8 +181,76 @@ async def test_brand_context_and_prompt_injection():
     content = messages[-1]["content"]
     assert "品牌档案（必须遵守）" in content
     assert "避免限时促销话术" in content
+    # system 侧同步注入（权重更高）
+    sys_content = messages[0]["content"]
+    assert "品牌档案与已沉淀偏好" in sys_content
+    assert "避免限时促销话术" in sys_content
 
     # 无品牌上下文 → 不注入品牌块（向后兼容）
     messages2 = build_copywriting_messages(state, get_channel("xiaohongshu"),
                                            brand_context=None)
     assert "品牌档案" not in messages2[-1]["content"]
+
+
+def test_diff_variants_field_level():
+    """diff_variants 按变体/字段定位修改点，忽略 notes，无差异返回空。"""
+    from app.memory import diff_variants
+
+    ai = [
+        {"title": "限时立减 30 元", "body": "保温 12 小时", "hashtags": ["#冬"], "notes": "a"},
+        {"title": "第二版", "body": "原文", "notes": "a"},
+    ]
+    user = [
+        {"title": "限时立减 30 元", "body": "保温 16 小时", "hashtags": ["#冬"], "notes": "改"},
+        {"title": "第二版", "body": "原文", "notes": "改"},
+    ]
+    diffs = diff_variants(ai, user)
+    assert len(diffs) == 1, diffs
+    assert "变体1.body" in diffs[0]
+    assert "12" in diffs[0] and "16" in diffs[0]
+    # notes 差异不计入
+    assert "notes" not in diffs[0]
+    # 未修改的 title 不计入（子串级 diff 只保留变更片段）
+    assert "限时立减" not in diffs[0]
+
+    # 无实质差异
+    assert diff_variants(ai, [dict(v, notes="x") for v in ai]) == []
+
+    # 变体数量不一致（新增/删除变体）
+    missing = diff_variants(ai, ai[:1])
+    assert len(missing) == 1 and "变体2" in missing[0]
+    assert len(diff_variants(ai, ai + [{"title": "新增", "body": "新增"}])) == 1
+
+
+def test_extract_rules_sends_only_diffs():
+    """extract_rules 只把修改点喂给 LLM，不发送全量文案（防止臆造规则）。"""
+    import json as jsonlib
+
+    from app.memory import extract_rules
+
+    captured = {}
+
+    class CaptureLLM:
+        def chat(self, messages, **kwargs):
+            captured["messages"] = messages
+            from app.llm import LLMResult
+
+            return LLMResult(content=jsonlib.dumps({"rules": ["保温时长统一为 16 小时"]}),
+                             model="fake", prompt_tokens=10, completion_tokens=5,
+                             latency_seconds=0.01)
+
+    ai = [{"title": "冬日温暖", "body": "保温 12 小时，限时优惠", "notes": "x"}]
+    user = [{"title": "冬日温暖", "body": "保温 16 小时，限时优惠", "notes": "y"}]
+    rules = extract_rules(CaptureLLM(), ai, user)
+    assert rules == ["保温时长统一为 16 小时"]
+
+    user_content = captured["messages"][-1]["content"]
+    assert "16" in user_content and "12" in user_content
+    # 未修改的字段/文字（title、'限时优惠'）不应作为对比材料出现，避免 LLM 编造无关规则
+    assert "冬日温暖" not in user_content
+    assert "限时优惠" not in user_content
+    # system 提示聚焦修改点、禁止推测
+    assert "仅基于这些修改点" in captured["messages"][0]["content"]
+
+    # 无差异 → 不调用 LLM
+    assert extract_rules(CaptureLLM(), ai, [dict(v, notes="z") for v in ai]) == []
