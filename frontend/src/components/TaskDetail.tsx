@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, subscribeTask } from '../api'
 import type { CopyVariant, Stage, Task } from '../types'
 import { parseVariants, Pipeline, StatusBadge, STAGES, formatTime, statusLabel } from './Pipeline'
+import FeedbackPanel from './FeedbackPanel'
 
 interface Props {
   taskId: number
@@ -310,6 +311,7 @@ export default function TaskDetail({ taskId }: Props) {
           </div>
         )}
       </section>
+      <FeedbackPanel taskId={taskId} brandId={learnBrandId === '' ? null : learnBrandId} />
     </div>
   )
 }

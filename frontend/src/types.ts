@@ -74,3 +74,20 @@ export interface Brand {
   pref_count?: number
   preferences?: { id: number; rule_text: string; source_task: number | null; created_at: string }[]
 }
+
+export interface ContentFeedback {
+  content_id: number
+  views: number
+  conversions: number
+  score: number
+  is_simulated: number
+  note: string
+  created_at: string
+}
+
+export interface FeedbackRule {
+  id: number
+  rule_text: string
+  strength: number
+  created_at: string
+}

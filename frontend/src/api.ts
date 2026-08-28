@@ -1,6 +1,6 @@
 /** 后端 API 客户端封装。 */
 
-import type { Brand, Channel, CopyVariant, Stats, Task } from './types'
+import type { Brand, Channel, ContentFeedback, CopyVariant, FeedbackRule, Stats, Task } from './types'
 
 /** 构建时注入的 API Token（VITE_API_TOKEN），未配置时后端同样放行。 */
 const API_TOKEN = import.meta.env.VITE_API_TOKEN as string | undefined
@@ -85,6 +85,19 @@ export const api = {
     }),
   deleteBrand: (id: number) =>
     request<{ ok: boolean }>(`/api/brands/${id}`, { method: 'DELETE' }),
+
+  // ---- 效果闭环 ----
+  submitFeedback: (taskId: number, payload: { views: number; conversions: number; score: number; note?: string }) =>
+    request<ContentFeedback>(`/api/tasks/${taskId}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  simulateFeedback: (taskId: number) =>
+    request<ContentFeedback>(`/api/tasks/${taskId}/feedback/simulate`, { method: 'POST' }),
+  getFeedback: (taskId: number) => request<ContentFeedback>(`/api/tasks/${taskId}/feedback`),
+  listFeedbackRules: (brandId: number) => request<FeedbackRule[]>(`/api/brands/${brandId}/feedback-rules`),
+  deleteFeedbackRule: (brandId: number, ruleId: number) =>
+    request<{ ok: boolean }>(`/api/brands/${brandId}/feedback-rules/${ruleId}`, { method: 'DELETE' }),
 }
 
 /** 订阅任务进度（SSE），返回取消函数。EventSource 无法自定义头，token 走 query 参数。 */
