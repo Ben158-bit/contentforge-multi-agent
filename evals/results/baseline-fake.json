@@ -1,0 +1,1130 @@
+{
+  "metadata": {
+    "provider": "fake",
+    "prompt_version": "copywriting-v1",
+    "generated_at": "2026-09-03T06:46:30.415652+00:00",
+    "seed": 42
+  },
+  "summary": {
+    "case_count": 30,
+    "success_count": 30,
+    "error_count": 0,
+    "schema_pass_rate": 1.0,
+    "constraint_pass_rate": 1.0,
+    "brand_alignment_rate": 1.0,
+    "average_cost": 0.0006,
+    "average_latency_seconds": 0.001
+  },
+  "cases": [
+    {
+      "case_id": "xhs-001",
+      "input_hash": "9d9c7c63afc3c31207822bc512f57771446a54050b38896d4354c5805ecbe33d",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "屿暖冬日通勤便携保温杯实测种",
+          "body": "屿暖围绕冬日通勤便携保温杯实测种草，带来24 小时保温、通勤，适合真实生活场景。",
+          "hashtags": [
+            "#屿暖"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "xhs-002",
+      "input_hash": "2429af8c2d0e3cd3836d5b919c1a6ff828023c500516c0a824bd539c6a8deced",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "澄光敏感肌换季修护面霜分享",
+          "body": "澄光围绕敏感肌换季修护面霜分享，带来敏感肌可用、神经酰胺，适合真实生活场景。",
+          "hashtags": [
+            "#澄光"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "xhs-003",
+      "input_hash": "0bf50d82cf89e90df147afc25ee0ed58f0b23dc78bc87fe71061a8ae7a5670d5",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "白泽家用意式半自动咖啡机开箱",
+          "body": "白泽围绕家用意式半自动咖啡机开箱对比，带来打奶泡、油脂，适合真实生活场景。",
+          "hashtags": [
+            "#白泽"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "xhs-004",
+      "input_hash": "e54ce660ee2e99f16b85a91acd9f8b9c2fe9e7d5bb7808adde95f6d1b6ebeeb7",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "鹿野新手养猫的主食冻干选购心",
+          "body": "鹿野围绕新手养猫的主食冻干选购心得，带来高蛋白、复水，适合真实生活场景。",
+          "hashtags": [
+            "#鹿野"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "xhs-005",
+      "input_hash": "07533357593ebd2196be4f30582490843518d5b52c23cb42e91cd46d86d58e5c",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "雾野露营氛围灯夜间场景实测",
+          "body": "雾野围绕露营氛围灯夜间场景实测，带来三档亮度、续航，适合真实生活场景。",
+          "hashtags": [
+            "#雾野"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "xhs-006",
+      "input_hash": "b62d049d55ce5967d43603237417e12e525522bb5f490e6e9f53c307bf868a51",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "骑遇城市通勤骑行头盔安全选购",
+          "body": "骑遇围绕城市通勤骑行头盔安全选购指南，带来一体成型、透气，适合真实生活场景。",
+          "hashtags": [
+            "#骑遇"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "xhs-007",
+      "input_hash": "ab46829742ae0de6a751fa1fbed477d7a922c0eabc9b96542970d6fb685627e3",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "岚川冬季加绒运动裤显瘦穿搭测",
+          "body": "岚川围绕冬季加绒运动裤显瘦穿搭测评，带来加绒、不臃肿，适合真实生活场景。",
+          "hashtags": [
+            "#岚川"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "xhs-008",
+      "input_hash": "4ea93f2b415d7b260cf026c7771bed3cf7c5ff19a2af903982771aba172bb361",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "栖木卧室助眠香薰机自用分享",
+          "body": "栖木围绕卧室助眠香薰机自用分享，带来超声波雾化、静音，适合真实生活场景。",
+          "hashtags": [
+            "#栖木"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "xhs-009",
+      "input_hash": "a455b0c3c5fa020edc135e661000b71c598f98a633010706646e5d3f513429a4",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "拾音学生党平价蓝牙耳机真实体",
+          "body": "拾音围绕学生党平价蓝牙耳机真实体验，带来通话降噪、30 小时，适合真实生活场景。",
+          "hashtags": [
+            "#拾音"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-001",
+      "input_hash": "a13cf9e9e1feb56c76f270ce382fc57d563495dd84d6e2c8442c61a195114b6c",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "澜舟智能床垫如何改善深睡：睡",
+          "body": "澜舟围绕智能床垫如何改善深睡：睡眠报告深度解读，带来睡眠效率、会员价 3999，适合真实生活场景。",
+          "hashtags": [
+            "#澜舟"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-002",
+      "input_hash": "22d81fc64068f90b23f4d83c590ce434fbb3b776d1cfdd983fd226ffaa11992c",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "数屿中小企业差旅费控白皮书式",
+          "body": "数屿围绕中小企业差旅费控白皮书式科普，带来差旅报销、平均节省 30%，适合真实生活场景。",
+          "hashtags": [
+            "#数屿"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-003",
+      "input_hash": "d48254e697f01bf7dcd42cc861d87a9fb483f188e51480fc9de359f8db1040e8",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "禾苗宝宝辅食第一口怎么选：配",
+          "body": "禾苗围绕宝宝辅食第一口怎么选：配料表观察指南，带来配料表干净、6 个月，适合真实生活场景。",
+          "hashtags": [
+            "#禾苗"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-004",
+      "input_hash": "94cd2ac75b612c80f52103e973215d59d3e579ca4ec448fb142d7a875a254be3",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "叙白新中式茶饮品牌的冷萃工艺",
+          "body": "叙白围绕新中式茶饮品牌的冷萃工艺与东方美学，带来冷萃工艺、东方美学，适合真实生活场景。",
+          "hashtags": [
+            "#叙白"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-005",
+      "input_hash": "906d67687d43e3fa142f3ccd8d61b0b39e8e336218e8cce390e72a65fb85abff",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "澄澈全屋净水怎么选：从自来水",
+          "body": "澄澈围绕全屋净水怎么选：从自来水到直饮的链路拆解，带来RO 反渗透、前置过滤器，适合真实生活场景。",
+          "hashtags": [
+            "#澄澈"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-006",
+      "input_hash": "fbbe48fb6361dced4f396955d166eb8b86b62526de8c4eccfaedbbfb3232b9a9",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "焕能久坐族的肌肉放松指南：筋",
+          "body": "焕能围绕久坐族的肌肉放松指南：筋膜枪的正确用法，带来热敷功能、肩颈，适合真实生活场景。",
+          "hashtags": [
+            "#焕能"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-007",
+      "input_hash": "41af82231b7a1a6e9310c7dc41ee59b11065e89b6edc80d4e68038935413a187",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "琅玕一枚定制婚戒背后的故事：",
+          "body": "琅玕围绕一枚定制婚戒背后的故事：珠宝品牌情感叙事，带来定制刻字、到店，适合真实生活场景。",
+          "hashtags": [
+            "#琅玕"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-008",
+      "input_hash": "0ba3047cdaa5213f3b305763f5bb143fedcbf79bd3a3785a8cc50c24fc89581b",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "明野孩子上网课视力告急？护眼",
+          "body": "明野围绕孩子上网课视力告急？护眼台灯选购全攻略，带来无频闪、照度，适合真实生活场景。",
+          "hashtags": [
+            "#明野"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wx-009",
+      "input_hash": "fdc64f6aaf1414f9190b9a7ee3ed888d0f68092fd4f96f8490b0cf040d4bb0e6",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "拓野第一次带娃露营要准备什么",
+          "body": "拓野围绕第一次带娃露营要准备什么：亲子露营清单，带来一键速开、安全，适合真实生活场景。",
+          "hashtags": [
+            "#拓野"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wb-001",
+      "input_hash": "ea364ff3007b4db19c07bfb0f3971b13b4390397348add8cc41d43425c902491",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "麦屿即食高纤燕麦新品上市官宣",
+          "body": "麦屿围绕即食高纤燕麦新品上市官宣，带来高纤、转发，适合真实生活场景。",
+          "hashtags": [
+            "#麦屿"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wb-002",
+      "input_hash": "da96d75065b40a5fcb15f17894de351eb6b5cbb546947ba2e843e3c690adfd49",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "途屿车载香薰第二件半价促销活",
+          "body": "途屿围绕车载香薰第二件半价促销活动，带来第二件半价、限时，适合真实生活场景。",
+          "hashtags": [
+            "#途屿"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wb-003",
+      "input_hash": "5ceb5bc077ce24b5c2049b8c1a843fe49df346389c155cf115a7b1fcd61ec811",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "鲜旅宿舍党便携榨汁杯实测安利",
+          "body": "鲜旅围绕宿舍党便携榨汁杯实测安利，带来30 秒、免洗，适合真实生活场景。",
+          "hashtags": [
+            "#鲜旅"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wb-004",
+      "input_hash": "81d964431083383635b49bf3d11e0b44e65e3d772e91aba3d708c6f8d963dcfe",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "劲野健身党加餐蛋白棒测评",
+          "body": "劲野围绕健身党加餐蛋白棒测评，带来高蛋白 20g、练后，适合真实生活场景。",
+          "hashtags": [
+            "#劲野"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wb-005",
+      "input_hash": "4b01b41f56c3c513cd7372c61a2396ab57c6d161e77ed5864ac9fcdac1de6376",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "晴川夏日出游防晒衣实测",
+          "body": "晴川围绕夏日出游防晒衣实测，带来UPF50+、轻薄，适合真实生活场景。",
+          "hashtags": [
+            "#晴川"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "wb-006",
+      "input_hash": "991d0a15611b2594e1c147cbd257abeae25ee0915c441144e1c79dd50de89b41",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "眠叙失眠星人枕头种草互动",
+          "body": "眠叙围绕失眠星人枕头种草互动，带来慢回弹、睡姿，适合真实生活场景。",
+          "hashtags": [
+            "#眠叙"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "pp-001",
+      "input_hash": "3be2c2f38ada76d40ab03e45f0fef091034c662d12a146230a36b41c300d59b1",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "暖程电热饭盒产品详情页",
+          "body": "暖程围绕电热饭盒产品详情页，带来316 不锈钢、免注水，适合真实生活场景。",
+          "hashtags": [
+            "#暖程"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "pp-002",
+      "input_hash": "040fdbc4591b0c920c25fed6a898b6db7bad12596403d168dc315111887fb2a6",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "键屿客制化蓝牙机械键盘详情页",
+          "body": "键屿围绕客制化蓝牙机械键盘详情页，带来全键热插拔、三模，适合真实生活场景。",
+          "hashtags": [
+            "#键屿"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "pp-003",
+      "input_hash": "2efdf485bf0d926271ee407c16d2c1556d7d633b51c551ac52d25e7fecd15e27",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "鹿餐宠物自动喂食器详情页",
+          "body": "鹿餐围绕宠物自动喂食器详情页，带来定时出粮、余粮，适合真实生活场景。",
+          "hashtags": [
+            "#鹿餐"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "pp-004",
+      "input_hash": "a9b42d9e2bea99994469726720b09b1acc7b8395836c8becc402282692e4ec02",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "驰野家用折叠跑步机详情页",
+          "body": "驰野围绕家用折叠跑步机详情页，带来免安装、静音，适合真实生活场景。",
+          "hashtags": [
+            "#驰野"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "pp-005",
+      "input_hash": "279cd805df5f1c11fecf34a82f52f043444c13f30cc5c0b5ade5e12da8fd11d5",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "锁光智能指纹门锁详情页",
+          "body": "锁光围绕智能指纹门锁详情页，带来半导体指纹、防撬报警，适合真实生活场景。",
+          "hashtags": [
+            "#锁光"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    },
+    {
+      "case_id": "pp-006",
+      "input_hash": "fe670bb2cabd39a8e504d0cc4c0c303b322d31e3fe6cd74b30449031f6ddca47",
+      "provider": "fake",
+      "model": "fake-eval-v1",
+      "prompt_version": "copywriting-v1",
+      "latency_seconds": 0.001,
+      "cost": 0.0006,
+      "variants": [
+        {
+          "title": "立序电动升降桌详情页",
+          "body": "立序围绕电动升降桌详情页，带来四档记忆、升降范围，适合真实生活场景。",
+          "hashtags": [
+            "#立序"
+          ],
+          "notes": "deterministic evaluation fixture"
+        }
+      ],
+      "metrics": {
+        "schema": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "constraints": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        },
+        "brand_alignment": {
+          "score": 1.0,
+          "passed": true,
+          "reasons": []
+        }
+      },
+      "error": null
+    }
+  ]
+}

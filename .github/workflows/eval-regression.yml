@@ -1,0 +1,24 @@
+name: Evaluation regression
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  fake-evaluation:
+    name: FakeLLM evaluation gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: Validate evaluation tests
+        run: python -m pytest evals backend/tests -q
+      - name: Run deterministic baseline
+        run: python evals/run_eval.py --dataset evals/dataset.jsonl --provider fake --output evals/results/candidate-fake.json --seed 42
+      - name: Check regression thresholds
+        run: python evals/check_regression.py --candidate evals/results/candidate-fake.json --baseline evals/results/baseline-fake.json --thresholds evals/thresholds.json

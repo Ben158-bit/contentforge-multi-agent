@@ -1,0 +1,6 @@
+{
+  "schema_pass_rate": 0.98,
+  "constraint_pass_rate": 0.9,
+  "cost_multiplier": 1.5,
+  "latency_multiplier": 2.0
+}
