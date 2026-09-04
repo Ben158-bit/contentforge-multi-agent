@@ -14,7 +14,9 @@ langgraph-checkpoint-sqlite==2.0.11
 
 # ===== Web 框架 =====
 fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
+# The standard extra pulls native uvloop/httptools extensions. They are not
+# needed by the test suite and can segfault on the Python 3.10 CI runner.
+uvicorn>=0.30.0
 python-multipart>=0.0.9
 
 # ===== 存储 =====
