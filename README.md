@@ -12,7 +12,7 @@
 - **实时可观测性**：SSE 推送阶段进度；阶段级/任务级 token 成本与耗时统计（DeepSeek 计价）
 - **演示模式**：无 API Key 即可体验完整流水线（内置 FakeLLM，含审校打回演示）
 - **安全与可靠性**：Bearer Token 鉴权 + 写接口限流 + 提示词注入防护 + 请求体限制 + request_id 结构化日志；任务级超时看门狗 + 启动恢复 + 后台并发上限
-- **全栈工程化**：FastAPI + React(Vite) + SQLite，Docker 部署，69 项后端测试 + 11 项前端测试 + GitHub Actions CI
+- **全栈工程化**：FastAPI + React(Vite) + SQLite，Docker 部署，93 项后端测试 + 15 项前端测试 + GitHub Actions CI
 
 ## 🏗 架构
 
@@ -91,7 +91,7 @@ bash scripts/e2e-smoke.sh   # 启动前后端 → 创建任务 → SSE → 确�
 
 ```bash
 cd backend
-../.venv/Scripts/python -m pytest tests/ -q    # 69 项：编排/仓储/API/SSE/演示/安全/可靠性/记忆层
+../.venv/Scripts/python -m pytest tests/ -q    # 93 项：编排/仓储/API/SSE/演示/安全/可靠性/记忆层
 ```
 
 ## 📁 目录结构
@@ -115,7 +115,7 @@ backend/
 │   ├── logging_setup.py # 结构化 JSON 日志 + request_id
 │   ├── security.py      # 鉴权 / 限流 / 请求体限制 / request_id
 │   └── main.py          # FastAPI 入口
-├── tests/               # 69 项测试
+├── tests/               # 93 项测试
 └── requirements.txt
 frontend/                # React(Vite)+TS 单页应用
 scripts/e2e-smoke.sh     # 端到端冒烟脚本
