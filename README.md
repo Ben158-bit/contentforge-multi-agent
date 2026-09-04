@@ -143,4 +143,3 @@ scripts/e2e-smoke.sh     # 端到端冒烟脚本
 ## 📄 文档
 
 - [演示流程](docs/demo.md) — 端到端演示步骤与预期效果
-- [简历亮点](docs/resume-highlights.md) — 项目面试话术与亮点总结
