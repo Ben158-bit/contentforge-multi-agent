@@ -67,6 +67,12 @@ def test_health_and_channels():
         assert {c["id"] for c in channels} >= {"xiaohongshu", "wechat", "weibo", "product_page"}
 
 
+def test_delete_missing_task_returns_404():
+    with TestClient(app) as client:
+        resp = client.delete("/api/tasks/999999999")
+        assert resp.status_code == 404
+
+
 def test_create_task_without_graph_returns_400(monkeypatch):
     """缺少 API Key（图构建失败）时创建任务应返回 400。"""
     import app.main as main_module

@@ -68,6 +68,16 @@ export default function TaskList({ onOpen }: Props) {
     }
   }
 
+  const removeTask = async (task: Task) => {
+    if (!window.confirm('确定删除任务“' + task.topic + '”吗？删除后无法恢复。')) return
+    try {
+      await api.deleteTask(task.id)
+      await refresh()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
   return (
     <div className="page">
       {/* 统计卡片 */}
@@ -162,6 +172,7 @@ export default function TaskList({ onOpen }: Props) {
                 <th>成本</th>
                 <th>耗时</th>
                 <th>创建时间</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -192,6 +203,18 @@ export default function TaskList({ onOpen }: Props) {
                   <td>¥{t.total_cost.toFixed(4)}</td>
                   <td>{t.total_latency.toFixed(1)}s</td>
                   <td className="muted">{formatTime(t.created_at)}</td>
+                  <td>
+                    <button
+                      className="btn small ghost"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void removeTask(t)
+                      }}
+                      aria-label={'删除任务：' + t.topic}
+                    >
+                      删除
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

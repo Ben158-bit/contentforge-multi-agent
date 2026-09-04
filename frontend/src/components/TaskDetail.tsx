@@ -118,9 +118,10 @@ export default function TaskDetail({ taskId }: Props) {
     if (!out || Object.keys(out).length === 0) {
       return <p className="muted">暂无产出</p>
     }
+    const objectOutput = Array.isArray(out) ? null : out
     // 调研阶段：展示联网检索来源（可溯源）
-    if (stage.stage_key === 'research' && Array.isArray(out.sources) && out.sources.length > 0) {
-      const sources = out.sources as { title?: string; url?: string }[]
+    if (stage.stage_key === 'research' && objectOutput && Array.isArray(objectOutput.sources) && objectOutput.sources.length > 0) {
+      const sources = objectOutput.sources as { title?: string; url?: string }[]
       return (
         <div>
           <p className="muted research-summary">📎 依据 {sources.length} 个联网来源</p>
@@ -137,7 +138,11 @@ export default function TaskDetail({ taskId }: Props) {
       )
     }
     if (stage.stage_key === 'copywriting') {
-      const list = Array.isArray(out.variants) ? (out.variants as CopyVariant[]) : []
+      const list = Array.isArray(out)
+        ? (out as CopyVariant[])
+        : Array.isArray(out.variants)
+          ? (out.variants as CopyVariant[])
+          : []
       return (
         <ul className="kv-list">
           {list.map((v, i) => (

@@ -36,6 +36,19 @@ function baseTask(): Task {
 }
 
 describe('parseVariants', () => {
+  it('无工件时解析后端直接返回的文案数组', () => {
+    const task: Task = {
+      ...baseTask(),
+      stages: [{
+        id: 1, stage_key: 'copywriting', status: 'completed',
+        output: [{ title: '真实接口格式', body: '正文' }],
+        feedback: '', revision_round: 0, cost: 0, latency: 0,
+      }],
+    }
+    const v = parseVariants(task)
+    expect(v).toEqual([{ title: '真实接口格式', body: '正文' }])
+  })
+
   it('从 artifacts 解析对象变体', () => {
     const task: Task = {
       ...baseTask(),

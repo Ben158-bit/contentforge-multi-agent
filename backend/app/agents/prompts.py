@@ -42,6 +42,23 @@ def _user_input(**fields) -> str:
     )
 
 
+def _marketing_controls(channel_id: str) -> str:
+    """统一写作决策控制，避免把所有任务当成自由发挥。"""
+    channel_name = {"weibo": "微博", "product_page": "电商产品页"}.get(
+        channel_id, channel_id or "未指定渠道"
+    )
+    return (
+        "\n营销任务控制：\n"
+        f"- 任务类型：根据用户要求识别为新品官宣、促销、测评、互动、观点、复盘、详情页或其他；"
+        f"当前渠道是 {channel_name}，不要因为渠道名自动补造任务目标。\n"
+        "- 事实账本：区分“已提供事实、可合理改写、待补充、禁止声称”；未提供的价格、销量、"
+        "效果、认证、评价、体验和时间承诺不得自行补全。\n"
+        "- 推理边界：观察、解释、假设和决定分开；不得把单个案例写成普遍结论，"
+        "不得把相关性或归因写成因果。\n"
+        "- 输出前检查：内容必须服务当前任务，保留重要不确定性，并给出能被用户执行或验证的下一步。"
+    )
+
+
 # ===================== 1. 市场调研 Agent =====================
 
 def build_research_messages(
@@ -162,7 +179,9 @@ def build_copywriting_messages(
     state: AgentState, channel: dict, brand_context: dict | None = None
 ) -> list[dict[str, str]]:
     """输出 schema:
-    {"variants": [{"title": str, "body": str, "hashtags": [str], "notes": str}]}
+    {"variants": [{"title": str, "body": str, "hashtags": [str], "notes": str,
+                    "selling_points": [{"label", "benefit", "proof"}],
+                    "specifications": [{"name", "value"}], "trust_badges": [str], "cta": str}]}
 
     Args:
         brand_context: 记忆层注入的品牌档案与偏好（可选，无则不影响原 prompt）。
@@ -209,19 +228,53 @@ def build_copywriting_messages(
     user_input = _user_input(
         topic=inp.get("topic", ""),
         brand_name=inp.get("brand_name", "未指定"),
+        target_audience=inp.get("target_audience", "未指定"),
+        channel_id=inp.get("channel_id", ""),
         extra_requirements=inp.get("extra_requirements", "无") or "无",
     )
+    channel_id = inp.get("channel_id", "")
+    if channel_id == "product_page":
+        output_instruction = (
+            "电商产品页必须是商品介绍，不得写成选购建议或社交帖子。正文依次包含：产品介绍、"
+            "3-5 条核心卖点、适用场景、规格与信任说明、CTA。每条卖点使用 FAB（特性→优势→用户利益→证据），"
+            "商品事实只能来自任务输入或品牌档案中的明确资料；策略只用于写作方向，不能作为产品事实依据。"
+            "不得编造材质、尺寸、认证、销量、价格或售后承诺。"
+            "未提供的规格必须明确写为‘待补充’。hashtags 必须为空数组。\n"
+            "请输出 JSON：{\"variants\": [{\"title\": \"品牌+品类+核心卖点的商品标题\", "
+            "\"body\": \"完整商品详情页正文\", \"selling_points\": [{\"label\": \"卖点标签\", "
+            "\"feature\": \"输入中明确的产品特性或待补充\", \"advantage\": \"该特性带来的优势\", "
+            "\"benefit\": \"对目标用户的实际利益\", \"proof\": \"输入中的依据或待补充\"}], "
+            "\"specifications\": [{\"name\": \"规格名\", \"value\": \"已知值或待补充\"}], "
+            "\"trust_badges\": [\"仅使用已提供的资质/售后信息\"], \"cta\": \"行动号召\", "
+            "\"hashtags\": [], \"notes\": \"创作与事实边界说明\"}]}"
+        )
+    elif channel_id == "weibo":
+        output_instruction = (
+            "微博文案必须控制在 280 字内，使用一句钩子、1-2 个核心信息点、互动或行动号召，"
+            "并附 2-4 个相关话题标签；不得使用产品页长段落。\n"
+            "钩子从场景痛点、反常识、数字对比、用户提问中择一，不能制造虚假争议或稀缺。"
+            "请输出 JSON：{\"variants\": [{\"title\": \"短标题\", \"body\": \"280字内微博正文\", "
+            "\"hashtags\": [\"#品牌或品类#\", \"#场景话题#\"], \"hook_type\": \"钩子类型\", "
+            "\"reasoning_chain\": \"现象-机制-动作-指标或待验证假设\", "
+            "\"proof_used\": [\"使用到的输入事实\"], \"risk_flags\": [\"无或具体风险\"], "
+            "\"notes\": \"创作思路\"}]}"
+        )
+    else:
+        output_instruction = (
+            "请输出 JSON：{\"variants\": [{\"title\": \"标题\", "
+            "\"body\": \"正文(遵守渠道 max_chars 限制)\", "
+            "\"hashtags\": [\"话题标签(如渠道要求)\"], "
+            "\"notes\": \"创作思路说明(100字内)\"}]}"
+        )
     user = (
         f"{user_input}"
+        f"{_marketing_controls(channel_id)}\n"
         f"策略：{_dump(strategy)}\n"
         f"渠道规范：\n{_dump(channel)}\n"
         f"渠道文案方法论（必须遵守）：\n{guide_section}\n"
         f"{brand_section}"
         f"{feedback_section}\n\n"
-        f"请输出 JSON：{{\"variants\": [{{\"title\": \"标题\", "
-        f"\"body\": \"正文(遵守渠道 max_chars 限制)\", "
-        f"\"hashtags\": [\"话题标签(如渠道要求)\"], "
-        f"\"notes\": \"创作思路说明(100字内)\"}}]}}"
+        f"{output_instruction}"
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
@@ -244,7 +297,9 @@ def build_review_messages(
     system = _sys(
         "内容审校专家",
         "对照策略与渠道规范逐条检查文案质量：卖点覆盖、渠道适配（语调/长度/结构）、"
-        "关键词植入、合规与情感表达。不通过时必须给出具体、可执行的修改建议。",
+        "关键词植入、合规与情感表达；额外检查事实账本、因果边界、虚假稀缺、"
+        "未经证实的效果/销量/评价，以及是否把单个案例写成普遍结论。"
+        "不通过时必须给出具体、可执行的修改建议。",
     )
     user_input = _user_input(
         topic=inp.get("topic", ""),
@@ -254,6 +309,7 @@ def build_review_messages(
     )
     user = (
         f"{user_input}"
+        f"{_marketing_controls(inp.get('channel_id', ''))}\n"
         f"策略要求：{_dump(strategy)}\n渠道规范：{_dump(channel)}\n"
         f"渠道文案方法论（审校依据）：\n{guide_section}\n"
         f"待审文案变体：\n{_dump(variants)}\n\n"

@@ -80,6 +80,23 @@ async def get_task(task_id: int) -> dict:
         return _row_to_dict(await cur.fetchone())
 
 
+async def delete_task(task_id: int) -> bool:
+    """删除任务及其阶段、工件、效果反馈；返回是否存在该任务。"""
+    async with _conn_ctx() as conn:
+        cur = await conn.execute("SELECT id FROM tasks WHERE id = ?", (task_id,))
+        if await cur.fetchone() is None:
+            return False
+        await conn.execute(
+            "DELETE FROM content_feedback WHERE content_id IN "
+            "(SELECT id FROM artifacts WHERE task_id = ?)", (task_id,)
+        )
+        await conn.execute("DELETE FROM artifacts WHERE task_id = ?", (task_id,))
+        await conn.execute("DELETE FROM stages WHERE task_id = ?", (task_id,))
+        await conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        await conn.commit()
+        return True
+
+
 async def list_tasks(project_id: Optional[int] = None) -> list[dict]:
     async with _conn_ctx() as conn:
         if project_id is None:

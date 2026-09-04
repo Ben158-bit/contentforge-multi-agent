@@ -16,7 +16,7 @@ export interface Stage {
   id: number
   stage_key: StageKey
   status: 'pending' | 'running' | 'completed' | 'edited' | 'failed'
-  output: Record<string, unknown> | null
+  output: Record<string, unknown> | unknown[] | null
   feedback: string
   revision_round: number
   cost: number
@@ -52,6 +52,16 @@ export interface CopyVariant {
   body: string
   hashtags?: string[]
   notes?: string
+  selling_points?: {
+    label: string
+    feature: string
+    advantage: string
+    benefit: string
+    proof: string
+  }[]
+  specifications?: { name: string; value: string }[]
+  trust_badges?: string[]
+  cta?: string
 }
 
 export interface Stats {

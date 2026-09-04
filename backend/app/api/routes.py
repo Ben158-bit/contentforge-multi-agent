@@ -16,6 +16,7 @@ from fastapi.responses import StreamingResponse
 from .. import repository as repo
 from ..agents.nodes import STAGE_KEYS, STAGE_LABELS
 from ..agents.runner import confirm_pipeline, learn_and_confirm, rerun_pipeline, run_task_pipeline
+from ..agents.graph import thread_id_for
 from ..config import get_settings
 from ..feedback import run_feedback_learning, simulate_feedback_for_task
 from ..schemas import (
@@ -248,6 +249,21 @@ async def get_task(task_id: int) -> dict:
     if detail is None:
         raise HTTPException(status_code=404, detail="任务不存在")
     return detail
+
+
+@router.delete("/tasks/{task_id}")
+async def delete_task(task_id: int, request: Request) -> dict:
+    """删除历史任务及其本地流水线状态。"""
+    deleted = await repo.delete_task(task_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    graph = getattr(request.app.state, "graph", None)
+    if graph is not None:
+        try:
+            graph.checkpointer.delete_thread(thread_id_for(task_id))
+        except Exception:
+            logger.warning("任务 %s 清理 checkpoint 失败", task_id)
+    return {"ok": True}
 
 
 @router.put("/tasks/{task_id}/stages/{stage_key}")

@@ -35,6 +35,194 @@ def test_fake_llm_keyword_routing():
     assert "variants" in data and len(data["variants"]) >= 1
 
 
+def test_fake_llm_routes_strategy_before_competitor_context():
+    """策略提示词包含竞品分析上下文时，仍必须路由到策略响应。"""
+    fake = FakeLLMClient()
+    r = fake.chat([{"role": "system", "content": "你是营销内容生产流水线中的【营销策略总监】。"},
+                   {"role": "user", "content": "竞品分析：已有竞品数据"}])
+    data = json.loads(r.content)
+    assert "core_value_proposition" in data
+    assert "competitors" not in data
+
+
+def test_fake_llm_demo_output_follows_headset_topic():
+    """电竞耳机任务的演示输出不能继续使用保温杯内容。"""
+    fake = FakeLLMClient()
+    prompts = [
+        {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+        {"role": "user", "content": "<user_input>\n- topic: 电竞耳机\n- brand_name: kk耳机\n</user_input>"},
+    ]
+    data = json.loads(fake.chat(prompts).content)
+    variant = data["variants"][0]
+    assert "耳机" in variant["title"] or "耳机" in variant["body"]
+    assert "保温杯" not in json.dumps(data, ensure_ascii=False)
+
+
+def test_fake_llm_demo_output_follows_arbitrary_topics():
+    """演示模式应根据每次任务输入生成主题一致、阶段不同的结果。"""
+    fake = FakeLLMClient()
+    for topic in ("机械键盘", "家用咖啡机"):
+        def call(role: str, context: str = ""):
+            return json.loads(fake.chat([
+                {"role": "system", "content": f"你是营销内容生产流水线中的【{role}】。"},
+                {"role": "user", "content": f"<user_input>\n- topic: {topic}\n- brand_name: 示例品牌\n- target_audience: 年轻用户\n</user_input>\n{context}"},
+            ]).content)
+
+        competitor = call("竞品分析专家", "市场调研摘要：围绕该主题的需求")
+        strategy = call("营销策略总监", "竞品分析：已有竞品数据")
+        copy = call("文案创作专家")
+        assert topic in json.dumps(competitor, ensure_ascii=False)
+        assert topic in json.dumps(strategy, ensure_ascii=False)
+        assert topic in json.dumps(copy, ensure_ascii=False)
+        assert competitor != strategy
+
+
+def test_fake_llm_product_page_is_a_product_introduction():
+    fake = FakeLLMClient()
+    data = json.loads(fake.chat([
+        {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+        {"role": "user", "content": (
+            "<user_input>\n- topic: 机械键盘\n- brand_name: VGN\n"
+            "- target_audience: 爱打游戏的电脑群体\n- channel_id: product_page\n"
+            "- extra_requirements: 突出静音和手感\n</user_input>"
+        )},
+    ]).content)
+    variant = data["variants"][0]
+    assert "产品介绍" in variant["body"]
+    assert "核心卖点" in variant["body"]
+    assert "机械键盘" in variant["body"]
+    assert variant["hashtags"] == []
+    assert len(variant["selling_points"]) >= 3
+    assert "静音" in json.dumps(variant["selling_points"], ensure_ascii=False)
+    assert {"feature", "advantage", "benefit", "proof"} <= set(variant["selling_points"][0])
+    assert "specifications" in variant and variant["specifications"]
+    assert variant["cta"]
+
+
+def test_product_page_prompt_declares_channel_specific_schema():
+    from app.agents.prompts import build_copywriting_messages
+    from app.templates import get_channel
+
+    messages = build_copywriting_messages({"input": {
+        "topic": "机械键盘", "brand_name": "VGN", "target_audience": "游戏玩家",
+        "channel_id": "product_page", "extra_requirements": "全键热插拔、三模连接",
+    }, "strategy": {}}, get_channel("product_page"))
+    prompt = messages[-1]["content"]
+    assert "channel_id: product_page" in prompt
+    assert "selling_points" in prompt
+    assert "specifications" in prompt
+    assert "cta" in prompt
+
+
+def test_fake_llm_weibo_is_short_and_hashtags():
+    fake = FakeLLMClient()
+    data = json.loads(fake.chat([
+        {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+        {"role": "user", "content": (
+            "<user_input>\n- topic: 家用咖啡机\n- brand_name: 示例品牌\n"
+            "- target_audience: 咖啡爱好者\n- channel_id: weibo\n</user_input>"
+        )},
+    ]).content)
+    variant = data["variants"][0]
+    assert len(variant["body"]) <= 280
+    assert len(variant["hashtags"]) >= 2
+    assert "家用咖啡机" in variant["body"]
+
+
+def test_fake_llm_ignores_empty_requirement_sentinel_from_real_prompt():
+    from app.agents.prompts import build_copywriting_messages
+    from app.templates import get_channel
+
+    messages = build_copywriting_messages({"input": {
+        "topic": "机械键盘", "brand_name": "VGN", "target_audience": "游戏玩家",
+        "channel_id": "product_page", "extra_requirements": "",
+    }, "strategy": {}}, get_channel("product_page"))
+    data = json.loads(FakeLLMClient().chat(messages).content)
+    variant = data["variants"][0]
+    assert all(item.get("feature") != "无" for item in variant["selling_points"])
+    assert all(item.get("value") != "无" for item in variant["specifications"])
+
+
+def test_fake_llm_weibo_enforces_limit_for_max_length_inputs():
+    fake = FakeLLMClient()
+    data = json.loads(fake.chat([
+        {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+        {"role": "user", "content": (
+            f"<user_input>\n- topic: {'机' * 200}\n- brand_name: {'牌' * 100}\n"
+            f"- target_audience: {'玩' * 200}\n- channel_id: weibo\n</user_input>"
+        )},
+    ]).content)
+    assert len(data["variants"][0]["body"]) <= 280
+
+
+def test_fake_llm_weibo_uses_topic_specific_reasoning():
+    """微博演示文案应给出主题相关的判断维度，而非固定泛化句式。"""
+    fake = FakeLLMClient()
+    data = json.loads(fake.chat([
+        {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+        {"role": "user", "content": (
+            "<user_input>\n- topic: 静音机械键盘\n- brand_name: 键屿\n"
+            "- target_audience: 办公室久坐的程序员\n- channel_id: weibo\n</user_input>"
+        )},
+    ]).content)
+    variant = data["variants"][0]
+    assert "轴体" in variant["body"] or "噪音" in variant["body"]
+    assert "hook_type" in variant
+    assert "reasoning_chain" in variant
+    assert "proof_used" in variant
+
+
+def test_fake_llm_keeps_xiaohongshu_and_wechat_distinct():
+    fake = FakeLLMClient()
+
+    def render(channel: str) -> dict:
+        return json.loads(fake.chat([
+            {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+            {"role": "user", "content": (
+                "<user_input>\n- topic: 机械键盘\n- brand_name: VGN\n"
+                f"- target_audience: 游戏玩家\n- channel_id: {channel}\n</user_input>"
+            )},
+        ]).content)["variants"][0]
+
+    xhs = render("xiaohongshu")
+    wechat = render("wechat")
+    assert xhs != wechat
+    assert len(xhs["hashtags"]) >= 5
+    assert "✨" in xhs["body"]
+    assert wechat["hashtags"] == []
+    assert "一、" in wechat["body"]
+
+
+def test_fake_llm_product_page_revision_does_not_invent_service_support():
+    fake = FakeLLMClient()
+    data = json.loads(fake.chat([
+        {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+        {"role": "user", "content": (
+            "<user_input>\n- topic: 机械键盘\n- brand_name: VGN\n"
+            "- target_audience: 游戏玩家\n- channel_id: product_page\n"
+            "- extra_requirements: 无\n</user_input>\n上一轮审校未通过"
+        )},
+    ]).content)
+    variant = data["variants"][0]
+    assert "服务支持" not in variant["cta"]
+    assert "服务支持" not in variant["body"]
+
+
+def test_fake_llm_review_is_topic_and_channel_aware():
+    fake = FakeLLMClient()
+    data = json.loads(fake.chat([
+        {"role": "system", "content": "你是营销内容生产流水线中的【内容审校专家】。"},
+        {"role": "user", "content": (
+            "<user_input>\n- topic: 机械键盘\n- channel_id: product_page\n</user_input>\n"
+            "待审文案变体：机械键盘产品介绍，核心卖点，查看详情。"
+        )},
+    ]).content)
+    rendered = json.dumps(data, ensure_ascii=False)
+    assert "保温" not in rendered
+    assert "小红书" not in rendered
+    assert "机械键盘" in rendered
+
+
 def test_fake_llm_review_depends_on_copy():
     """演示审校（无状态）：待审文案含 CTA 才通过，否则打回。"""
     fake = FakeLLMClient()

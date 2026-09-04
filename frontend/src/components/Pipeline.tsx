@@ -83,6 +83,9 @@ export function parseVariants(task: Task): CopyVariant[] {
   }
   // 兜底：从阶段 output 读取
   const copyStage = task.stages?.find((s) => s.stage_key === 'copywriting')
-  const variants = copyStage?.output?.variants
+  const output = copyStage?.output
+  if (Array.isArray(output)) return output as CopyVariant[]
+  if (!output || typeof output !== 'object') return []
+  const variants = output.variants
   return Array.isArray(variants) ? (variants as CopyVariant[]) : []
 }

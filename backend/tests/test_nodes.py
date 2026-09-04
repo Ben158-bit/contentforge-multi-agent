@@ -165,6 +165,62 @@ def test_copywriting_injects_channel_guide():
     assert "[品牌] + [核心关键词]" in messages_p[-1]["content"]
 
 
+def test_weibo_copywriting_injects_reasoning_skill_rules():
+    """微博渠道应注入电商推理 skill 规则，且规则不泄漏到其他渠道。"""
+    from app.agents.prompts import build_copywriting_messages
+    from app.templates import get_channel
+
+    state = _base_state()
+    state["input"]["channel_id"] = "weibo"
+    state["strategy"] = {"core_value_proposition": "v"}
+
+    weibo_content = build_copywriting_messages(
+        state, get_channel("weibo")
+    )[-1]["content"]
+    assert "现象 → 机制 → 动作 → 指标/结果" in weibo_content
+    assert "多样本归纳优先" in weibo_content
+    assert "不编造销量、价格、效果和微博来源" in weibo_content
+    assert "280 字内" in weibo_content
+
+    xhs_content = build_copywriting_messages(
+        {**state, "input": {**state["input"], "channel_id": "xiaohongshu"}},
+        get_channel("xiaohongshu"),
+    )[-1]["content"]
+    assert "现象 → 机制 → 动作 → 指标/结果" not in xhs_content
+
+
+def test_copywriting_adds_job_and_fact_controls():
+    """文案 Prompt 应明确任务类型和产品事实边界。"""
+    from app.agents.prompts import build_copywriting_messages
+    from app.templates import get_channel
+
+    state = _base_state()
+    state["input"]["channel_id"] = "weibo"
+    state["input"]["extra_requirements"] = "新品官宣"
+    content = build_copywriting_messages(state, get_channel("weibo"))[-1]["content"]
+
+    assert "任务类型" in content
+    assert "事实账本" in content
+    assert "已提供事实" in content
+    assert "不得把单个案例写成普遍结论" in content
+    assert '"hook_type"' in content
+    assert '"proof_used"' in content
+
+
+def test_product_page_prompt_requires_fab_evidence():
+    """商品详情页应要求 FAB 结构，并将缺失证据标为待补充。"""
+    from app.agents.prompts import build_copywriting_messages
+    from app.templates import get_channel
+
+    state = _base_state()
+    state["input"]["channel_id"] = "product_page"
+    content = build_copywriting_messages(state, get_channel("product_page"))[-1]["content"]
+
+    assert "事实账本" in content
+    assert "特性→优势→用户利益→证据" in content
+    assert "待补充" in content
+
+
 class FakeWebSearch:
     """假搜索客户端。"""
 

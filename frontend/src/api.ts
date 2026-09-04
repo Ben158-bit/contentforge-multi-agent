@@ -35,6 +35,8 @@ export const api = {
 
   listTasks: () => request<Task[]>('/api/tasks'),
   getTask: (id: number) => request<Task>(`/api/tasks/${id}`),
+  deleteTask: (id: number) =>
+    request<{ ok: boolean }>(`/api/tasks/${id}`, { method: 'DELETE' }),
 
   createTask: (payload: {
     topic: string
