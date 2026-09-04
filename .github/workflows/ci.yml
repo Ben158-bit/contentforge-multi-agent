@@ -32,7 +32,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        # npm install can reconcile the existing lockfile with optional platform packages
+        # (for example @esbuild/*) across the Linux runner's npm version.
+        run: npm install --no-audit --no-fund
       - name: Typecheck
         working-directory: frontend
         run: npx tsc --noEmit
