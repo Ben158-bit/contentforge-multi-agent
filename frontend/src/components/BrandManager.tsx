@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Brand } from '../types'
+import ConfirmButton from './ConfirmButton'
 
 const EMPTY_FORM = { name: '', tone: '', core_claims: '', audience: '', taboos: '', notes: '' }
 
@@ -57,7 +58,6 @@ export default function BrandManager() {
   }
 
   const remove = async (id: number) => {
-    if (!window.confirm('删除品牌将同时删除其偏好规则，确定？')) return
     try {
       await api.deleteBrand(id)
       if (detail?.id === id) setDetail(null)
@@ -155,7 +155,14 @@ export default function BrandManager() {
                   <td>{b.pref_count ?? 0}</td>
                   <td>
                     <button className="btn small ghost" onClick={() => startEdit(b)}>编辑</button>{' '}
-                    <button className="btn small ghost" onClick={() => remove(b.id)}>删除</button>
+                    <ConfirmButton
+                      className="btn small ghost"
+                      label="删除"
+                      question="品牌与偏好规则将一并删除"
+                      confirmLabel="删除"
+                      ariaLabel={'删除品牌：' + b.name}
+                      onConfirm={() => remove(b.id)}
+                    />
                   </td>
                 </tr>
               ))}

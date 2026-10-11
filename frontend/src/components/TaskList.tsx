@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Brand, Channel, Stats, Task } from '../types'
 import { StatusBadge, formatTime } from './Pipeline'
+import ConfirmButton from './ConfirmButton'
 
 interface Props {
   onOpen: (taskId: number) => void
@@ -69,7 +70,6 @@ export default function TaskList({ onOpen }: Props) {
   }
 
   const removeTask = async (task: Task) => {
-    if (!window.confirm('确定删除任务“' + task.topic + '”吗？删除后无法恢复。')) return
     try {
       await api.deleteTask(task.id)
       await refresh()
@@ -204,16 +204,14 @@ export default function TaskList({ onOpen }: Props) {
                   <td>{t.total_latency.toFixed(1)}s</td>
                   <td className="muted">{formatTime(t.created_at)}</td>
                   <td>
-                    <button
+                    <ConfirmButton
                       className="btn small ghost"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void removeTask(t)
-                      }}
-                      aria-label={'删除任务：' + t.topic}
-                    >
-                      删除
-                    </button>
+                      label="删除"
+                      question="删除后无法恢复"
+                      confirmLabel="删除"
+                      ariaLabel={'删除任务：' + t.topic}
+                      onConfirm={() => removeTask(t)}
+                    />
                   </td>
                 </tr>
               ))}

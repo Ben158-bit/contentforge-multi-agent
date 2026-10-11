@@ -66,6 +66,13 @@ export const api = {
   rerunTask: (taskId: number) =>
     request<Task>(`/api/tasks/${taskId}/rerun`, { method: 'POST' }),
 
+  /** 任务页切换发布渠道：后端会按新渠道整条重跑流水线。 */
+  updateTaskChannel: (taskId: number, channelId: string) =>
+    request<Task>(`/api/tasks/${taskId}/channel`, {
+      method: 'PUT',
+      body: JSON.stringify({ channel_id: channelId }),
+    }),
+
   listBrands: () => request<Brand[]>('/api/brands'),
   getBrand: (id: number) => request<Brand>(`/api/brands/${id}`),
   createBrand: (payload: {

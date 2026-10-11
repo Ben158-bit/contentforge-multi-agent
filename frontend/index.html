@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ContentForge · 多 Agent 营销内容工作台</title>
+    <script>
+      // 在 React 挂载前设好 data-theme，避免深色模式下首帧白屏闪烁（FOUC）。
+      // 与 src/useTheme.ts 的 THEME_STORAGE_KEY 保持一致。
+      ;(function () {
+        try {
+          var t = localStorage.getItem('cf-theme')
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+          }
+          document.documentElement.dataset.theme = t
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
