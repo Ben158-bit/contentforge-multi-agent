@@ -58,6 +58,65 @@ def test_fake_llm_demo_output_follows_headset_topic():
     assert "保温杯" not in json.dumps(data, ensure_ascii=False)
 
 
+def test_fake_llm_xiaohongshu_contract_fields_follow_topic():
+    """小红书演示的契约字段（场景/体验/卖点）必须跟随主题。
+
+    回归起因：用户建「磁轴键盘」任务，标题是键盘、契约卖点却是
+    「长效保温」——旧 fixture 把 scenario/experience_detail/selling_points
+    硬编码成了保温杯内容。既有回归测试没带 channel_id，测不到小红书分支。
+    """
+    fake = FakeLLMClient()
+    data = json.loads(fake.chat([
+        {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+        {"role": "user", "content": (
+            "<user_input>\n- topic: 磁轴键盘\n- brand_name: VGN\n"
+            "- target_audience: 电竞玩家\n- channel_id: xiaohongshu\n</user_input>"
+        )},
+    ]).content)
+    variant = data["variants"][0]
+    dumped = json.dumps(data, ensure_ascii=False)
+    assert "保温" not in dumped
+    assert "磁轴键盘" in variant["scenario"]
+    assert "磁轴键盘" in json.dumps(variant["selling_points"], ensure_ascii=False)
+    # 契约只要求非空：字段必须还在（守门层会逐项核验）
+    assert variant["experience_detail"]
+    assert variant["cta"]
+    assert variant["hook_type"]
+
+
+def test_fake_llm_copy_tone_varies_by_topic_category():
+    """演示文案口吻应随品类切换：数码（硬核避坑）/ 生活（情绪种草）/ 默认（理性）。
+
+    回归起因：旧演示对任何主题都是同一套「✨ 最近在研究…」句式，
+    用户换主题口吻几乎不变，看不出竞品分析在指导差异化。
+    """
+    fake = FakeLLMClient()
+
+    def body_for(topic: str) -> str:
+        data = json.loads(fake.chat([
+            {"role": "system", "content": "你是营销内容生产流水线中的【文案创作专家】。"},
+            {"role": "user", "content": (
+                f"<user_input>\n- topic: {topic}\n- brand_name: 示例品牌\n"
+                "- target_audience: 年轻用户\n- channel_id: xiaohongshu\n</user_input>"
+            )},
+        ]).content)
+        return data["variants"][0]["body"]
+
+    digital = body_for("磁轴键盘")
+    lifestyle = body_for("家用咖啡机")
+    default = body_for("通勤背包")
+
+    # 三个品类口吻应有真实差异（不同开头句式 / 不同侧重）
+    assert digital != lifestyle != default
+    # 数码口吻强调参数/避坑/场景匹配，不堆情绪
+    assert "参数" in digital or "避坑" in digital
+    # 生活口吻强调生活感/情绪（与数码的「避坑清单」风格区分开）
+    assert "生活" in lifestyle or "舒心" in lifestyle or "幸福感" in lifestyle
+    assert "避坑" not in lifestyle
+    # 默认口吻保持原「理性反焦虑」特征
+    assert "融入你的日常" in default
+
+
 def test_fake_llm_demo_output_follows_arbitrary_topics():
     """演示模式应根据每次任务输入生成主题一致、阶段不同的结果。"""
     fake = FakeLLMClient()
@@ -187,10 +246,17 @@ def test_fake_llm_keeps_xiaohongshu_and_wechat_distinct():
     xhs = render("xiaohongshu")
     wechat = render("wechat")
     assert xhs != wechat
-    assert len(xhs["hashtags"]) >= 5
-    assert "✨" in xhs["body"]
+    # 小红书标签改为**分层结构**（渠道内容契约），hashtags 由守门层扁平化得到，
+    # 所以演示产出里不再直接给 hashtags。
+    tiers = xhs["tags_by_tier"]
+    assert len(tiers["hot"]) + len(tiers["longtail"]) >= 5
+    # 小红书要求 emoji（require_emoji: true）；口吻随品类切换，emoji 会不同
+    # （数码 🎧 / 生活 🌿 / 默认 ✨），所以只断言「含 emoji」而不是绑定某个具体 emoji。
+    assert any(ch in xhs["body"] for ch in ("🎧", "🌿", "✨"))
     assert wechat["hashtags"] == []
     assert "一、" in wechat["body"]
+    # 公众号的小节标题必须真的出现在正文里（契约里 headings 核验项的要求）
+    assert all(heading in wechat["body"] for heading in wechat["section_headings"])
 
 
 def test_fake_llm_product_page_revision_does_not_invent_service_support():
@@ -271,5 +337,100 @@ def test_full_pipeline_with_demo_mode(tmp_path, monkeypatch):
     assert result["total_cost"] > 0
     assert result["stage_status"] == {
         "research": "completed", "competitor": "completed", "strategy": "completed",
-        "copywriting": "completed", "review": "completed",
+        "copywriting": "completed", "humanize": "skipped", "guardrail": "completed",
+        "review": "completed",
     }
+    # 内容契约：演示产出必须满足渠道契约，否则演示会一直显示缺口让人以为功能坏了。
+    # 标签统一由分层结构扁平化得到（标签的单一来源）。
+    assert result["copywriting"][0]["hashtags"], "小红书标签应由 tags_by_tier 扁平化得到"
+    assert result["guardrail"]["stats"]["contract_gaps"] == 0, result["guardrail"]["contract_gaps"]
+    # 渠道上下文前移：策略阶段必须给出该渠道原生的内容骨架（演示同样遵守）
+    structure = result["strategy"].get("content_structure")
+    assert structure, "策略阶段应产出渠道原生的 content_structure"
+    assert len(structure) >= 3, structure
+    # 每步都带上了本任务主题 —— 证明是「渠道结构 + 本任务」适配出来的，不是通用模板
+    assert all("智能保温杯" in step for step in structure), structure
+
+
+# ---------------------------------------------------------------------------
+# 去 AI 味（humanize）在演示模式下的覆盖
+# ---------------------------------------------------------------------------
+def test_fake_llm_answers_every_declared_stage_role():
+    """契约：`prompts.py` 里声明过的每个阶段角色，演示模式都必须认。
+
+    新增一个 Agent 节点时若忘记给 FakeLLMClient 加分支，它不会报错，
+    而是静默返回 ``{"error": "无法识别的阶段"}`` —— 演示照跑不误、
+    那一阶段却是空的。这个测试专门盯住这个静默降级。
+    """
+    import inspect
+    import re
+
+    from app.agents import prompts
+
+    declared = set(re.findall(r'_sys\(\s*"([^"]+)"', inspect.getsource(prompts)))
+    assert declared, "未能从 prompts.py 解析出任何阶段角色，解析正则已失效"
+
+    for role in sorted(declared):
+        raw = FakeLLMClient().chat([
+            {"role": "system", "content": prompts._sys(role, "")},
+            {"role": "user", "content": "<user_input>\n- topic: 示例主题\n</user_input>"},
+        ]).content
+        assert "error" not in json.loads(raw), f"演示模式不认识阶段角色「{role}」"
+
+
+def test_fake_llm_humanize_rewrite_reduces_ai_tells():
+    """演示改写必须真的把 AI 味命中降下来，而不是随便回一段文字。"""
+    from app.agents.prompts import build_humanize_messages
+    from app.fake_llm import _dynamic_copy
+    from app.guardrails.ai_tells import ai_tell_stats, scan_ai_tells
+    from app.templates import get_channel
+
+    topic = "智能保温杯新品上市"
+    variant = _dynamic_copy(topic, "屿暖", "25-35岁通勤上班族", "wechat", "", False)["variants"][0]
+    hits = scan_ai_tells(variant["body"])
+    before = ai_tell_stats(hits)
+    assert before["fatal"] >= 1, "演示正文应当含 fatal 级 AI 味，否则这个用例测不到东西"
+
+    messages = build_humanize_messages(
+        {"input": {"topic": topic, "brand_name": "屿暖", "channel_id": "wechat"}},
+        variant, hits, get_channel("wechat"),
+    )
+    data = json.loads(FakeLLMClient().chat(messages).content)
+
+    assert data["body"] and data["body"] != variant["body"]
+    assert data["changes"], "改写应说明改动了什么"
+    after = ai_tell_stats(scan_ai_tells(data["body"]))
+    assert after["total"] < before["total"], f"改写没有减少 AI 味：{before} -> {after}"
+    assert after["fatal"] <= before["fatal"]
+    # 事实不丢：主题保留、长度不塌陷
+    assert topic in data["body"]
+    assert len(data["body"]) >= len(variant["body"]) * 0.6
+
+
+def test_demo_pipeline_humanize_is_accepted_for_wechat(tmp_path, monkeypatch):
+    """公众号链路：演示模式要把改写走到「采纳」，而不是停在 failed。"""
+    monkeypatch.setattr(get_settings(), "fake_llm", True)
+    graph = build_graph(get_llm_client(), db_path=tmp_path / "ckpt.db")
+
+    result = run_pipeline(graph, {
+        "task_id": 2,
+        "input": {
+            "topic": "智能保温杯新品上市", "brand_name": "屿暖",
+            "target_audience": "25-35岁通勤上班族", "channel_id": "wechat",
+            "extra_requirements": "",
+        },
+    })
+
+    assert "__interrupt__" in result
+    assert result["stage_status"]["humanize"] == "completed"
+    report = result["humanize"]
+    assert report["enabled"] is True
+    assert report["stats"]["accepted"] == 1, report
+    assert report["stats"]["failed"] == 0
+    assert report["variant_reports"][0]["decision"] == "accepted"
+    # 采纳后写回 copywriting：正文是改写稿，AI 味命中低于改写前
+    variant = result["copywriting"][0]
+    assert report["variant_reports"][0]["ai_tells_after"] < report["variant_reports"][0]["ai_tells_before"]
+    assert "智能保温杯新品上市" in variant["body"]
+    # 守门层报告必须描述最终交付的那份正文（含自动修正后的形态）
+    assert result["guardrail"]["passed"] is True

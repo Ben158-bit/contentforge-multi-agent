@@ -1,0 +1,64 @@
+# 测试专用流水线定义：证明「新增一条流水线只需要加一个 YAML」。
+#
+# 它刻意**复用** marketing 的节点实现，但：
+#   - 阶段集合不同（没有 competitor / strategy / review）
+#     → 验证 runner 是**按图所挂的定义**决定阶段集合，而不是硬编码常量；
+#   - 没有 guardrail 阶段
+#     → 验证守门层是**按定义启用**的可选节点，未启用时链路与改造前一致。
+#
+# 阶段 key 必须等于 state_key：阶段的身份同时用于 DB 阶段行、前端流水线与
+# stage_status，而提示词构造器按状态键读上下文（如 state["research"]）。
+# 想换展示名请改 label。
+pipeline_id: seo_rewrite
+version: 1
+description: SEO 改写（测试专用）：关键词调研 → 文案改写 → 人工确认
+
+human_gate: seo_gate
+success_target: END
+failure_target: END
+
+# 与 marketing 不同：这里只有一个可编辑上游阶段
+upstream_editable_stages:
+  - research
+
+nodes:
+  - key: research
+    label: 关键词调研
+    kind: agent
+    is_stage: true
+    contract:
+      factory: make_research_node
+      state_key: research
+      prompt_key: research
+    temperature: 0.4
+    max_retries: 1
+    inputs: [input]
+    outputs: [research, stage_status, total_cost, total_latency]
+
+  - key: copywriting
+    label: 文案改写
+    kind: agent
+    is_stage: true
+    contract:
+      factory: make_copywriting_node
+      state_key: copywriting
+      prompt_key: copywriting
+    temperature: 0.6
+    inputs: [input, research]
+    outputs: [copywriting, stage_status, total_cost, total_latency]
+
+  - key: seo_gate
+    label: 人工确认
+    kind: human_gate
+    is_stage: false
+    contract:
+      factory: make_human_confirm_node
+      state_key: confirmed
+    inputs: [task_id, copywriting]
+    outputs: [confirmed]
+
+edges:
+  - {from: START, to: research}
+  - {from: research, to: copywriting}
+  - {from: copywriting, to: seo_gate}
+  - {from: seo_gate, to: END}

@@ -1,0 +1,114 @@
+# 违禁词 / 广告法词表
+#
+# 来源：内化自工作区技能包 `weibo-wenan-xiezuo`（确定性引擎的 ABSOLUTE_WORDS，
+#       实测 51 条，每条自带「具体替换话术」而非简单禁用）与小红书违禁词资产。
+#       本文件是项目内资产，运行时由 app/guardrails/compliance.py 加载，
+#       不依赖任何外部技能包或网络请求。
+#
+# 字段说明：
+#   word          命中词（纯 ASCII 字母的词会启用英文单词边界，避免子串误匹配）
+#   category      见下方 categories
+#   suggestion    具体替换话术——必须可执行，不要写「禁用」了事
+#   basis         依据出处
+#   exempt_next   （可选）命中后若紧邻的下一个字符属于该集合，则不判违规。
+#                 用于规避序数豁免误判：「第一次」不是绝对化的「第一」。
+#
+# 排序不影响匹配：扫描时按词长降序处理，并用区间遮罩避免重复命中。
+version: 1
+
+categories:
+  absolute_advertising:
+    label: 广告法绝对化用语
+    severity: high
+    basis: 《广告法》第九条
+  efficacy_claim:
+    label: 效果与承诺性表述
+    severity: high
+    basis: 《广告法》第二十八条（虚假或引人误解的宣传）
+  medical:
+    label: 医疗功效表述
+    severity: high
+    basis: 《广告法》第十七条、《化妆品监督管理条例》
+  finance:
+    label: 收益承诺表述
+    severity: high
+    basis: 《广告法》第二十五条
+  platform_prohibited:
+    label: 平台限用功效词
+    severity: high
+    basis: 平台内容规范与《化妆品分类规则和分类目录》
+
+entries:
+  # ---------- 广告法绝对化用语（内化自微博引擎）----------
+  - {word: 全网最低, category: absolute_advertising, suggestion: 改成「本次活动价 X 元」，并注明有效期}
+  - {word: 史上最低, category: absolute_advertising, suggestion: 改成「本次活动价 X 元」，并注明有效期}
+  - {word: 领导品牌, category: absolute_advertising, suggestion: 删除，或改成「XX 榜单第 N 名（出处/统计口径）」}
+  - {word: 销量冠军, category: absolute_advertising, suggestion: 删除，或改成「XX 平台 X 月类目第 N 名（附截图）」}
+  - {word: 绝无仅有, category: absolute_advertising, suggestion: 改成具体差异点描述}
+  - {word: 史无前例, category: absolute_advertising, suggestion: 删除，或改成「我们第一次做 XX」并说明范围}
+  - {word: 国家级, category: absolute_advertising, suggestion: 改成具体资质名称，如「通过 XX 国家标准检测」}
+  - {word: 世界级, category: absolute_advertising, suggestion: 改成可核验的具体事实或参数}
+  - {word: 全球级, category: absolute_advertising, suggestion: 改成可核验的具体事实或参数}
+  - {word: 最先进, category: absolute_advertising, suggestion: 给出具体参数与测试条件，或删除}
+  - {word: 最便宜, category: absolute_advertising, suggestion: 改成「本次活动价 X 元」}
+  - {word: 百分百, category: absolute_advertising, suggestion: 改成「实测样本内均为 X」}
+  - {word: 最高级, category: absolute_advertising, suggestion: 删除，改成具体参数对比}
+  - {word: 第一, category: absolute_advertising, suggestion: 改成「较早」「其中之一」，或给出排名出处与统计口径, exempt_next: "点条步次章节课讲部集期年月日周批版幕轮场线手时间季"}
+  - {word: 唯一, category: absolute_advertising, suggestion: 改成「少数几个之一」，或删除}
+  - {word: 独家, category: absolute_advertising, suggestion: 改成「本店/本账号自有」，并保留可核验证据}
+  - {word: 首创, category: absolute_advertising, suggestion: 改成「较早推出」并注明时间与范围}
+  - {word: 首个, category: absolute_advertising, suggestion: 改成「较早推出」并注明时间与范围}
+  - {word: 顶级, category: absolute_advertising, suggestion: 改成具体参数或体验描述}
+  - {word: 顶尖, category: absolute_advertising, suggestion: 改成具体参数或体验描述}
+  - {word: 极致, category: absolute_advertising, suggestion: 改成具体参数或体验描述}
+  - {word: 极品, category: absolute_advertising, suggestion: 改成具体参数或体验描述}
+  - {word: 最好, category: absolute_advertising, suggestion: 改成「更适合 XX 人群」或「我个人更偏好」}
+  - {word: 最佳, category: absolute_advertising, suggestion: 改成「更适合 XX 场景」}
+  - {word: 最强, category: absolute_advertising, suggestion: 改成具体参数对比}
+  - {word: 最优, category: absolute_advertising, suggestion: 改成「我们这次选的是 X 方案，原因是 Y」}
+  - {word: 最棒, category: absolute_advertising, suggestion: 改成具体体验描述}
+  - {word: 最牛, category: absolute_advertising, suggestion: 改成具体体验描述}
+  - {word: 最低, category: absolute_advertising, suggestion: 改成具体数值，如「目前标价 X 元」}
+  - {word: 最高, category: absolute_advertising, suggestion: 给出具体数值与测试条件，或删除}
+  - {word: 最快, category: absolute_advertising, suggestion: 给出具体数值与测试条件，或删除}
+  - {word: 最大, category: absolute_advertising, suggestion: 给出具体数值与测试条件，或删除}
+  - {word: 领先, category: absolute_advertising, suggestion: 改成「在 XX 指标上比 YY 高 Z%（出处）」}
+  - {word: 王牌, category: absolute_advertising, suggestion: 改成具体功能描述}
+  - {word: 冠军, category: absolute_advertising, suggestion: 删除，或给出赛事/榜单全称与名次}
+  - {word: 无敌, category: absolute_advertising, suggestion: 改成具体功能描述}
+  - {word: 完美, category: absolute_advertising, suggestion: 改成具体功能描述}
+  - {word: 万能, category: absolute_advertising, suggestion: 改成适用场景清单}
+  - {word: 神器, category: absolute_advertising, suggestion: 改成具体功能描述}
+  - {word: 绝对, category: absolute_advertising, suggestion: 改成「在 XX 条件下」}
+  - {word: "100%", category: absolute_advertising, suggestion: 改成「实测样本内均为 X」}
+
+  # ---------- 效果与承诺性表述 ----------
+  - {word: 立竿见影, category: efficacy_claim, suggestion: 删除，改成「实测 X 天后的变化」}
+  - {word: 零风险, category: efficacy_claim, suggestion: 删除，属承诺性表述；如确有保障请写明具体保障条款}
+  - {word: 永久, category: efficacy_claim, suggestion: 改成「质保 X 年」等可兑现表述}
+  - {word: 终身, category: efficacy_claim, suggestion: 改成「质保 X 年」等可兑现表述}
+
+  # ---------- 医疗功效表述 ----------
+  - {word: 包治, category: medical, suggestion: 删除，涉医疗功效表述}
+  - {word: 根治, category: medical, suggestion: 删除，涉医疗功效表述}
+  - {word: 特效, category: medical, suggestion: 删除，涉医疗功效表述}
+
+  # ---------- 收益承诺表述 ----------
+  - {word: 稳赚, category: finance, suggestion: 删除，涉收益承诺表述}
+  - {word: 包赚, category: finance, suggestion: 删除，涉收益承诺表述}
+  - {word: 保本, category: finance, suggestion: 删除，涉收益承诺表述}
+
+  # ---------- 平台限用功效词 ----------
+  # 非特殊用途化妆品不得宣称以下功效；医疗类表述任何人不得宣称。
+  - {word: 美白, category: platform_prohibited, suggestion: 改成「肤色提亮」「均匀肤色」，避免功效宣称}
+  - {word: 祛斑, category: platform_prohibited, suggestion: 删除，属特殊用途化妆品范畴}
+  - {word: 除螨, category: platform_prohibited, suggestion: 删除，涉功效宣称}
+  - {word: 生发, category: platform_prohibited, suggestion: 删除，涉医疗/特殊用途表述}
+  - {word: 防脱, category: platform_prohibited, suggestion: 删除，涉医疗/特殊用途表述}
+  - {word: 抗敏, category: platform_prohibited, suggestion: 改成「适合敏感肌使用（需有测试依据）」}
+  - {word: 消炎, category: platform_prohibited, suggestion: 删除，涉医疗功效表述}
+  - {word: 杀菌, category: platform_prohibited, suggestion: 删除；如为消毒产品请写明卫生许可批号}
+  - {word: 排毒, category: platform_prohibited, suggestion: 删除，涉医疗功效表述}
+  - {word: 治疗, category: platform_prohibited, suggestion: 删除，涉医疗功效表述}
+  - {word: 治愈, category: platform_prohibited, suggestion: 删除，涉医疗功效表述}
+  - {word: 药用, category: platform_prohibited, suggestion: 删除；非药品不得使用「药用」表述}

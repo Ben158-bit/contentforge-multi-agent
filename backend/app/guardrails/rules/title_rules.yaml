@@ -1,0 +1,57 @@
+# 标题体检规则
+#
+# 来源：内化自小红书标题六维评分卡的**纯算术部分**（维度权重 + S/A/B/C 定档），
+#       并把原先需要实时爆款数据才能打分的维度，改用可确定性判定的词表近似
+#       ——这样守门层能在零成本、可复现的前提下给出体检结论。
+#
+# 说明：词表打分是**启发式近似**，用于发现「明显不合格」的标题，
+#      不作为内容优劣的最终裁决；最终仍由人工在确认环节定夺。
+version: 1
+
+# 六维权重（内化自小红书评分卡）
+dimensions:
+  keyword_match: {label: 主题匹配, weight: 0.15}
+  structure: {label: 结构, weight: 0.20}
+  benefit: {label: 利益, weight: 0.25}
+  emotion: {label: 情绪, weight: 0.20}
+  scarcity: {label: 稀缺, weight: 0.15}
+  compliance: {label: 合规, weight: 0.05}
+
+# 档位阈值（加权总分 0-10）
+grades:
+  - {min: 9.0, grade: S, note: 优秀，可直接使用}
+  - {min: 7.0, grade: A, note: 良好，可选优化}
+  - {min: 5.0, grade: B, note: 偏弱，建议重写}
+  - {min: 0.0, grade: C, note: 不合格，需重写}
+
+# 各维度关键词表（启发式打分依据）
+keywords:
+  benefit: [省, 免费, 便宜, 划算, 性价比, 提升, 提高, 翻倍, 倍, 折, 元, 天, 分钟, 步, 招, 技巧, 方法, 清单, 攻略, 避坑, 不踩雷, 亲测, 实测]
+  emotion: [后悔, 惊艳, 崩溃, 绝了, 太香, 救命, 哭, 笑, 气, 焦虑, 治愈, 上头, 心累, 破防, 破大防, 真香, 踩雷, 血亏, 泪目]
+  scarcity: [最后, 限时, 仅剩, 限量, 首发, 断货, 停产, 倒计时, 错过, 售罄, 手慢无, 抄底]
+
+# 结构维度：长度合规为主
+structure:
+  # 超出该容忍倍数（相对上限）时直接判不合格
+  oversize_tolerance: 1.2
+  # 含分隔符（｜/丨/·/，）时在体检说明里标注「结构清晰度较好」。
+  # 注意：只作为提示写入 notes，不参与打分，避免引入主观权重。
+  separators: ["｜", "|", "丨", "·", "，", ","]
+
+# 打分档位（命中 0 / 1 / ≥2 个关键词分别得分）
+scoring:
+  keyword_hits:
+    none: 3
+    one: 7
+    many: 10
+  # 标题长度合规
+  length:
+    within: 10
+    tolerable: 6
+    over: 3
+  # 合规维度（无违禁词命中）
+  compliance:
+    clean: 10
+    low: 5
+    medium: 2
+    high: 0

@@ -145,6 +145,51 @@ def test_copywriting_injects_review_feedback():
     assert "缺少行动号召" in user_content
 
 
+def test_copywriting_injects_competitor_differentiation():
+    """创作节点应注入竞品分析结论（定位/内容策略/差异化机会点/真实标题），
+    并要求口吻刻意区分——这是「文案口吻不再同质化」的落点。"""
+    from app.agents.prompts import build_copywriting_messages
+    from app.templates import get_channel
+
+    state = _base_state()
+    state["strategy"] = {"core_value_proposition": "v"}
+    state["competitor"] = {
+        "competitors": [
+            {"name": "ATK", "positioning": "专业电竞磁轴",
+             "content_strategy": "强调参数与换轴教程", "selling_points": ["热插拔"]},
+        ],
+        "gaps": ["缺少针对办公场景的低噪音体验内容"],
+        "evidence": [
+            {"title": "恭喜你今天学会了磁轴键盘换轴和调校", "channel": "xiaohongshu"},
+        ],
+    }
+    messages = build_copywriting_messages(state, get_channel("xiaohongshu"))
+    system_content = next(m["content"] for m in messages if m["role"] == "system")
+    user_content = next(m["content"] for m in messages if m["role"] == "user")
+
+    # 竞品定位 / 内容策略 / 差异化机会点 / 真实标题样本都进入文案创作
+    assert "ATK" in user_content
+    assert "专业电竞磁轴" in user_content
+    assert "强调参数与换轴教程" in user_content
+    assert "缺少针对办公场景的低噪音体验内容" in user_content
+    assert "恭喜你今天学会了磁轴键盘换轴和调校" in user_content
+    # system 侧也要求「刻意区分」口吻
+    assert "刻意区分" in system_content
+
+
+def test_copywriting_without_competitor_keeps_old_behavior():
+    """无竞品分析时，文案创作提示词不出现竞品块（退回只依赖策略的原行为）。"""
+    from app.agents.prompts import build_copywriting_messages
+    from app.templates import get_channel
+
+    state = _base_state()
+    state["strategy"] = {"core_value_proposition": "v"}
+    messages = build_copywriting_messages(state, get_channel("xiaohongshu"))
+    user_content = messages[-1]["content"]
+    assert "竞品分析结论" not in user_content
+    assert "差异化机会点" not in user_content
+
+
 def test_copywriting_injects_channel_guide():
     """创作节点注入渠道文案方法论（提炼自 agency-agents-zh）。"""
     from app.agents.prompts import build_copywriting_messages

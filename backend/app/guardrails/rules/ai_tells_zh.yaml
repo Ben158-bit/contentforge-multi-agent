@@ -1,0 +1,204 @@
+# 中文 AI 味检测规则
+#
+# 来源：结构迁移自 humanizer 资产的 24 种「AI 写作痕迹」模式
+#       （原规范基于 Wikipedia "Signs of AI writing"，但**词表是英文的**，
+#        对中文营销文案无效）。本文件是**中文重建版**：模式结构保留，
+#        词表全部换为中文语料，并把可确定性判定的部分（标点/句式/段落长度）
+#        做成 metric 规则，供守门层做零成本预扫描。
+#
+# kind 三种类型：
+#   keyword  词表命中（words）
+#   regex    正则命中（pattern，大小写敏感）
+#   metric   结构指标超阈值（metric + threshold，由 ai_tells.py 的指标注册表计算）
+#
+# severity：fatal（必须消除，humanize 复检时为硬门槛）/ warning / info
+#
+# ⚠️ 英文规范里的「弯引号」规则**未照搬**——中文正文本来就用全角引号，
+#    改为检测「中文段落里混入半角标点」，且降为 info 级。
+version: 1
+
+categories:
+  content:
+    label: 内容套路
+    severity: warning
+  language:
+    label: 语言与句式
+    severity: warning
+  style:
+    label: 排版与标点
+    severity: info
+  communication:
+    label: 沟通残留
+    severity: warning
+  filler:
+    label: 填充与模糊
+    severity: info
+
+patterns:
+  # ---------- 语言与句式（fatal 级在这里）----------
+  - id: negative_parallel
+    category: language
+    kind: regex
+    severity: fatal
+    pattern: '不是[^，。；！？]{1,24}，?而是'
+    suggestion: 改为直接正面陈述。先说结论，不要用「不是 X 而是 Y」的否定铺垫
+  - id: not_x_but_y
+    category: language
+    kind: regex
+    severity: fatal
+    pattern: '与其说[^，。；]{1,20}，?不如说'
+    suggestion: 删掉比较框架，直接说结论
+  - id: negation_frame
+    category: language
+    kind: regex
+    severity: fatal
+    pattern: '并非[^，。；！？]{1,24}，?而是'
+    suggestion: 改为直接正面陈述
+
+  - id: ai_connector
+    category: language
+    kind: keyword
+    severity: warning
+    words: [值得注意的是, 值得一提的是, 综上所述, 总而言之, 总的来说, 换言之, 不仅如此, 更重要的是, 与此同时, 正因如此]
+    suggestion: 删掉连接词，让上下句靠语义自然衔接
+  - id: corporate_jargon
+    category: language
+    kind: keyword
+    severity: warning
+    words: [赋能, 闭环, 抓手, 颗粒度, 心智, 链路, 对齐, 生态位, 打法, 组合拳, 底层逻辑, 降维打击, 方法论沉淀, 全链路]
+    suggestion: 换成日常说法。如「赋能」→「帮上忙」，「闭环」→「有始有终」
+  - id: copula_avoidance
+    category: language
+    kind: keyword
+    severity: warning
+    words: [扮演着, 充当着, 作为一名的存在, 起到了举足轻重]
+    suggestion: 直接用「是」「有」，不要用「扮演着…角色」这类绕弯的系动词替代
+  - id: parallel_triple
+    category: language
+    kind: metric
+    severity: info
+    metric: parallel_triple
+    threshold: 2
+    suggestion: 三段式堆砌（A、B、C）出现多次。砍到两项，或其中一项展开讲
+
+  # ---------- 内容套路 ----------
+  - id: era_preamble
+    category: content
+    kind: keyword
+    severity: warning
+    words: [在当今社会, 随着科技的发展, 随着互联网的普及, 在这个快速发展的时代, 在大背景下, 众所周知, 近年来随着]
+    suggestion: 删掉时代背景铺垫，直接从具体事实或场景切入
+  - id: inflated_significance
+    category: content
+    kind: keyword
+    severity: warning
+    words: [标志着, 见证了, 具有里程碑意义, 意义重大, 不可磨灭, 浓墨重彩的一笔, 载入史册, 开创了先河]
+    suggestion: 把「意义」换成具体发生了什么。如「标志着行业转折」→「此后三个月，同类产品降价 20%」
+  - id: promo_inflate
+    category: content
+    kind: keyword
+    severity: warning
+    words: [重磅, 震撼来袭, 不容错过, 敬请期待, 划时代, 颠覆性, 炸裂, 史诗级, 惊艳亮相, 强势来袭]
+    suggestion: 删掉宣传腔，用具体参数、价格或时间说话
+  - id: vague_attribution
+    category: content
+    kind: keyword
+    severity: warning
+    words: [业内人士认为, 有专家表示, 据悉, 相关人士透露, 权威数据显示, 研究表明, 数据显示]
+    suggestion: 补上具体出处（机构 + 年份 + 口径），或直接删掉这句
+  - id: superficial_analysis
+    category: content
+    kind: keyword
+    severity: warning
+    words: [彰显了, 折射出, 凸显了, 体现出, 助力了, 进一步印证了]
+    suggestion: 删掉这类贴标签式的收尾，改为陈述具体事实
+  - id: challenges_outlook
+    category: content
+    kind: regex
+    severity: warning
+    pattern: '挑战与机遇并存|机遇与挑战并存|未来可期|让我们拭目以待|相信在不久的将来'
+    suggestion: 删掉「挑战与展望」套路段，换成已经发生或已排期的具体事情
+
+  # ---------- 沟通残留 ----------
+  - id: chatbot_residue
+    category: communication
+    kind: keyword
+    severity: warning
+    words: [希望这对你有帮助, 当然可以, 你说得对, 如需了解更多, 需要我帮你, 以下是为你准备的, 让我们开始]
+    suggestion: 这是对话式残留，正文里不该出现，直接删除
+  - id: knowledge_cutoff
+    category: communication
+    kind: keyword
+    severity: warning
+    words: [截至我的知识, 资料有限, 信息有限, 暂未查到, 根据现有公开信息]
+    suggestion: 删掉免责声明。查不到就不写，或明确写出你依据的是哪份材料
+  - id: sycophantic
+    category: communication
+    kind: keyword
+    severity: warning
+    words: [好问题, 非常好的问题, 您说得非常对, 你说得很对]
+    suggestion: 删掉恭维语，直接进入内容
+
+  # ---------- 填充与模糊 ----------
+  - id: filler_phrase
+    category: filler
+    kind: keyword
+    severity: info
+    words: [为了达到, 由于的原因, 在当前这个时间点, 需要注意的是, 不可否认, 从某种程度上说, 就目前而言]
+    suggestion: 压缩成更短的说法。如「由于下雨的原因」→「因为下雨」
+  - id: excessive_hedging
+    category: filler
+    kind: regex
+    severity: info
+    pattern: '可能(会)?在一定程度上|或许可能|有可能存在|大致上可以认为'
+    suggestion: 过度限定会削弱结论。要么给出判断，要么说明不确定的具体原因
+  - id: hollow_ending
+    category: filler
+    kind: keyword
+    severity: warning
+    words: [未来可期, 值得期待, 让我们一起, 共同见证, 迈上新台阶, 再创辉煌, 让我们拭目以待]
+    suggestion: 换成具体的下一步：时间、数字、可核对的动作
+
+  # ---------- 排版与标点（确定性指标）----------
+  - id: em_dash_overuse
+    category: style
+    kind: metric
+    severity: warning
+    metric: em_dash_count
+    threshold: 1
+    suggestion: 破折号滥用是典型 AI 痕迹。改成逗号、句号或拆成两句
+  - id: bold_overuse
+    category: style
+    kind: metric
+    severity: info
+    metric: bold_density
+    threshold: 4
+    suggestion: 粗体是强调手段，不是排版装饰。一条文案里最多留 1-2 处
+  - id: inline_heading_list
+    category: style
+    kind: metric
+    severity: warning
+    metric: bold_list_density
+    threshold: 1
+    suggestion: 删掉列表项开头的「**小标题**：」结构，改为连贯的句子
+  - id: emoji_in_heading
+    category: style
+    kind: metric
+    severity: info
+    metric: emoji_in_heading
+    threshold: 1
+    suggestion: 标题不要用 emoji 装饰
+  - id: para_too_long
+    category: style
+    kind: metric
+    severity: warning
+    metric: max_sentences_per_para
+    threshold: 3
+    suggestion: 段落超过 3 句。手机阅读场景请拆段，每段 1-3 句
+  - id: halfwidth_punct
+    category: style
+    kind: metric
+    severity: info
+    metric: halfwidth_punct
+    threshold: 2
+    suggestion: 中文正文里混入了半角标点（, . ! ? ; :），统一改为全角

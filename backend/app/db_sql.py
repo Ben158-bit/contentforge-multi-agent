@@ -6,6 +6,11 @@ SQL（重复代码）。本模块收敛这些同步操作，消除重复。
 
 repository.py 的异步 CRUD（API 层用）保持不变——它面向事件循环，
 改造为同步包装会引入无谓的 to_thread 复杂度，收益不成比例。
+
+⚠️ 并发安全：写路径依赖 `db_anchor.hold()` 持有的进程级保活连接。
+少了它，本模块「每条语句开关一次连接」的写法会在 WAL 下与其它线程竞争
+旁路文件（`-wal` / `-shm`）的删除/重建，表现为 `attempt to write a
+readonly database` —— 详见 `db_anchor.py` 的故障复盘。
 """
 from __future__ import annotations
 
@@ -13,11 +18,21 @@ import sqlite3
 from typing import Any
 
 from .config import get_settings
+from .db_anchor import hold as _hold_anchor
+
+# 连接超时：与 SQLite 的 busy_timeout 一致。并发写时先在锁上等，
+# 等不到才抛「database is locked」——比直接失败好得多。
+_CONNECT_TIMEOUT = 10.0
 
 
 def conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(get_settings().data_path / "contentforge.db"))
+    path = get_settings().data_path / "contentforge.db"
+    # 关键：先确保进程级保活连接存在，避免「最后一个连接关闭 →
+    # 删除 -wal/-shm → 并发新建连接失败 → readonly database」竞态。
+    _hold_anchor(path)
+    conn = sqlite3.connect(str(path), timeout=_CONNECT_TIMEOUT)
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout={int(_CONNECT_TIMEOUT * 1000)}")
     return conn
 
 

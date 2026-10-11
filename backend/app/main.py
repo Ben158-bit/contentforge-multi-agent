@@ -20,8 +20,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from .agents.graph import build_graph
 from .agents.runner import fail_stale_running_tasks, recover_running_tasks
 from .api.routes import router
-from .config import get_settings, get_llm_client, get_web_search_client
+from .config import get_settings, get_llm_client, get_web_search_client, get_competitor_source
 from .db import init_db
+from . import db_anchor
 from .logging_setup import setup_logging
 from .security import (
     AuthMiddleware,
@@ -56,10 +57,16 @@ async def lifespan(app: FastAPI):
     except RuntimeError as exc:
         logger.error("运行时配置校验失败: %s", exc)
     try:
-        graph = build_graph(get_llm_client(), web_search=get_web_search_client())
+        competitor_source = get_competitor_source()
+        graph = build_graph(
+            get_llm_client(),
+            web_search=get_web_search_client(),
+            competitor_source=competitor_source,
+        )
         app.state.graph = graph
-        logger.info("流水线图构建成功 (model=%s, web_search=%s)",
-                    s.deepseek_model, s.web_search_provider or "disabled")
+        logger.info("流水线图构建成功 (model=%s, web_search=%s, competitor_source=%s)",
+                    s.deepseek_model, s.web_search_provider or "disabled",
+                    "enabled" if competitor_source is not None else "disabled")
     except RuntimeError as exc:
         # 缺少 API Key 等：服务可启动但无法创建任务
         logger.warning("流水线图构建失败，任务创建将不可用: %s", exc)
@@ -85,6 +92,8 @@ async def lifespan(app: FastAPI):
             saver_cm.__exit__(None, None, None)
         except Exception:
             logger.exception("关闭 checkpoint 连接失败")
+    # 释放 WAL 保活锚点（否则进程退出前一直占着 contentforge.db 的连接）
+    db_anchor.release_all()
 
 
 app = FastAPI(

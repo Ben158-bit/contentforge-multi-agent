@@ -14,9 +14,12 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from .. import repository as repo
-from ..agents.nodes import STAGE_KEYS, STAGE_LABELS
 from ..agents.runner import confirm_pipeline, learn_and_confirm, rerun_pipeline, run_task_pipeline
-from ..agents.graph import thread_id_for
+from ..agents.graph import (
+    definition_editable_stage_set,
+    definition_stage_keys,
+    thread_id_for,
+)
 from ..config import get_settings
 from ..feedback import run_feedback_learning, simulate_feedback_for_task
 from ..schemas import (
@@ -28,6 +31,7 @@ from ..schemas import (
     FeedbackRuleOut,
     ProjectCreate,
     StageEdit,
+    TaskChannelUpdate,
     TaskCreate,
 )
 from ..templates import list_channels
@@ -39,8 +43,9 @@ router = APIRouter(prefix="/api", tags=["api"])
 # SSE 轮询间隔（秒）
 SSE_POLL_INTERVAL = 1.5
 
-# 允许的编辑阶段（strategy/copywriting 是人工干预价值最高的两个）
-EDITABLE_STAGES = {"research", "competitor", "strategy", "copywriting", "review"}
+# 允许的编辑阶段：由流水线定义推导（只有 Agent 阶段可编辑）。
+# 以前这里是硬编码的 5 个名称 —— 换一条流水线（阶段集合不同）就会错。
+# 现在改流水线只需改 YAML，路由自动跟上。
 
 # 后台流水线并发上限（信号量，超出排队）
 _task_slots = asyncio.Semaphore(get_settings().max_concurrent_tasks)
@@ -218,7 +223,7 @@ async def create_task(body: TaskCreate, request: Request) -> dict:
         extra_requirements=body.extra_requirements,
         brand_id=body.brand_id,
     )
-    for key in STAGE_KEYS:
+    for key in definition_stage_keys(graph):
         await repo.upsert_stage(task_id, key, status="pending")
 
     initial_state = {
@@ -268,7 +273,7 @@ async def delete_task(task_id: int, request: Request) -> dict:
 
 @router.put("/tasks/{task_id}/stages/{stage_key}")
 async def edit_stage(task_id: int, stage_key: str, body: StageEdit, request: Request) -> dict:
-    if stage_key not in EDITABLE_STAGES:
+    if stage_key not in definition_editable_stage_set(_get_graph(request)):
         raise HTTPException(status_code=400, detail=f"不可编辑的阶段: {stage_key}")
     detail = await _task_detail(task_id)
     if detail is None:
@@ -343,6 +348,44 @@ async def rerun_task(task_id: int, request: Request) -> dict:
         },
     }
     # 后台执行（整条流水线重跑，耗时较长），立即返回当前状态
+    asyncio.create_task(_run_rerun_background(request.app, graph, task_id, initial_state))
+    return await _task_detail(task_id)
+
+
+@router.put("/tasks/{task_id}/channel")
+async def change_task_channel(task_id: int, body: TaskChannelUpdate, request: Request) -> dict:
+    """任务页直接切换发布渠道：更新 channel_id 后整条重跑（产出按新渠道生成）。
+
+    渠道决定了提示词、守门参数与竞品数据源——切换渠道意味着旧产出全部作废，
+    因此语义上等价于「改输入 + 重跑」，复用 rerun_pipeline 的清场逻辑。
+    """
+    graph = _get_graph(request)
+    task = await repo.get_task(task_id)
+    # repo.get_task 对不存在的任务返回 {} 而非 None，统一用真值判断
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task["status"] == "running":
+        raise HTTPException(status_code=409, detail="任务正在执行中，请等待完成后再切换渠道")
+    if body.channel_id not in list_channels():
+        raise HTTPException(status_code=400, detail=f"未知渠道: {body.channel_id}")
+    if body.channel_id == task["channel_id"]:
+        # 渠道未变化：不重跑，直接返回当前详情
+        return await _task_detail(task_id)
+
+    await repo.update_task(task_id, channel_id=body.channel_id)
+    updated = await repo.get_task(task_id)
+    initial_state = {
+        "task_id": task_id,
+        "brand_id": updated["brand_id"],
+        "input": {
+            "topic": updated["topic"],
+            "brand_name": updated["brand_name"],
+            "target_audience": updated["target_audience"],
+            "channel_id": updated["channel_id"],
+            "extra_requirements": updated["extra_requirements"],
+        },
+    }
+    # 后台执行（整条流水线按新渠道重跑），立即返回当前状态
     asyncio.create_task(_run_rerun_background(request.app, graph, task_id, initial_state))
     return await _task_detail(task_id)
 

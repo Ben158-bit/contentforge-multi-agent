@@ -41,10 +41,13 @@ async def test_init_db_idempotent():
     finally:
         await conn.close()
     assert {"projects", "tasks", "stages", "artifacts", "schema_migrations"} <= tables
-    assert versions == {"v1", "v2", "v3"}
+    # 期望版本从 MIGRATIONS 派生（新增迁移不必回来改这里）
+    assert versions == {version for version, _ in db.MIGRATIONS}
     # v2 迁移应新增品牌表与 tasks.brand_id 列
     assert "brands" in tables and "brand_preferences" in tables
     assert "brand_id" in task_cols
+    # v4 迁移应新增失败原因列
+    assert "error" in task_cols
 
 
 async def test_project_and_task_crud():

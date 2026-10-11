@@ -124,3 +124,16 @@ def get_web_search_client():
         api_key=s.web_search_api_key,
         max_results=s.web_search_max_results,
     )
+
+
+def get_competitor_source():
+    """构建竞品数据源（未配置 REDFOX_API_KEY 时返回 None，竞品分析自动降级）。
+
+    红狐 Hub 的密钥是 Windows 用户级环境变量（``REDFOX_API_KEY``，不入库不写文件），
+    与 DeepSeek 的 ``.env`` 配置解耦 —— 所以这里单独读环境变量，
+    而不是把它塞进 Settings（避免把第三方密钥写进 .env）。
+    """
+    from .agents.competitor_source import CompetitorDataSource
+
+    source = CompetitorDataSource()
+    return source if source.available else None

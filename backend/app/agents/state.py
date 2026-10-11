@@ -1,7 +1,9 @@
 """LangGraph 图状态定义。
 
 流水线：research(市场调研) → competitor(竞品分析) → strategy(策略制定)
-      → copywriting(文案创作) → review(审校) → [不通过则打回创作] → human_confirm(人工确认)
+      → copywriting(文案创作) → humanize(去 AI 味，仅公众号)
+      → guardrail(确定性守门) → review(审校)
+      → [不通过则打回创作] → human_confirm(人工确认)
 """
 from __future__ import annotations
 
@@ -35,10 +37,17 @@ class AgentState(TypedDict, total=False):
     research: dict[str, Any]        # 市场调研
     competitor: dict[str, Any]      # 竞品分析
     strategy: dict[str, Any]        # 策略制定
-    copywriting: list[dict[str, Any]]  # 文案变体列表
+    copywriting: list[dict[str, Any]]  # 文案变体列表（守门层归一化后回写）
     review: dict[str, Any]          # 审校结果
     review_feedback: str            # 审校打回时的修改建议
     revision_round: int             # 当前审校迭代轮数
+
+    # 确定性守门层产出（无 LLM 参与，同输入必同输出）
+    guardrail: dict[str, Any]       # GuardrailReport.model_dump()
+    needs_human: list[str]          # 工具/审校标记的「需人工处理」事项
+
+    # 去 AI 味改写（humanize 节点，仅公众号；未启用时 enabled=False，零 token）
+    humanize: dict[str, Any]        # HumanizeReport.model_dump()
 
     # 进度与统计
     stage_status: Annotated[dict[str, str], _merge_dict]  # stage_key -> status

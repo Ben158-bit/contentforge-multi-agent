@@ -1,6 +1,69 @@
 # 内容渠道模板：定义各渠道的文案风格、长度、结构与 SEO 要求。
 # 文案创作 Agent 依据渠道模板生成内容；审校 Agent 依据模板检查合规性。
 # copywriting_guide 提炼自 agency-agents-zh 渠道专家 Agent 方法论。
+#
+# ---------------------------------------------------------------------------
+# 三类字段，三种消费者（别混用）
+# ---------------------------------------------------------------------------
+# 1) **风格提示**（require_emoji / require_hashtags / copywriting_guide / tone …）
+#    消费者是**模型**——整份渠道配置会被渲染进文案创作提示词。
+#    这里放的是「需要判断力、无法穷举」的风格建议，模型尽力而为，工具不校验。
+#
+# 2) **结构化守门参数**（emoji_policy / hashtag_style / hashtag_min / hashtag_max /
+#    title_min_chars / title_max_chars / char_count_mode）
+#    消费者是 ``app.guardrails``——可枚举、要求 100% 复现，所以落成确定性代码参数。
+#    守门层的读取规则是「**显式优先、缺省推断**」：不写也能跑（按 require_* 推断），
+#    但推断值未必等于渠道的真实规范，所以 P5 起全部显式声明。
+#
+# 3) **内容契约**（content_contract）—— P6
+#    消费者是 ``app.guardrails.content_contract``。
+#    存在的理由：``copywriting_guide`` 写得再细，也只是**提示词里的一段话**，
+#    没有任何机制检查模型到底照做了没有（**写了规则 ≠ 执行了规则**）。
+#    content_contract 把其中**可穷举**的部分抽成结构化字段，由守门层逐项核验，
+#    缺口以「需人工处理」的形式暴露出来，并随守门摘要一起交给审校节点。
+#
+#    ⚠️ 边界：契约缺口只**标记**，**不改变报告的 passed** ——
+#    ``passed`` 只表达硬合规（字数 / 违禁词 / 致命 AI 味）。
+#    内容是「不够好」还是「不能交付」是两件事，判断前者是 review 节点的职责。
+#
+#    条目 schema：
+#      field        必填；变体里的字段名
+#      kind         text | list | enum | tiered | headings
+#      label        给人看的名字（出现在 needs_human 与前端）
+#      values       kind=enum 时的允许取值
+#      min / max    kind=list|tiered|headings 的数量边界
+#      item_fields  kind=list 时每项必须带的子字段（缺一即缺口）
+#      tiers        kind=tiered 时的分层定义 [{key, label, min, max}]
+#      feeds        扁平化后写入的**标准字段**（目前只有 tags_by_tier → hashtags）
+#
+#    未声明 content_contract 的渠道**不核验**（不推断、不兜底）——
+#    与守门参数的「缺省推断」不同：契约是「要求」，没有要求就没有缺口。
+#
+# 字段语义：
+#   emoji_policy      remove | cap3 | keep    缺省按 require_emoji 推断
+#   hashtag_style     paired | hash | none    缺省按 require_hashtags 推断
+#                     paired = #话题#（微博必须成对才生效）；hash = #话题（小红书单井号）
+#   hashtag_min       int   低于此数时按主题兜底补 **1 个**（实现只补 1 个，不做「凑够 N 个」，
+#                           所以语义是「该渠道必须有话题标签」而不是「必须有多少个」）
+#   hashtag_max       int   超出即截断，0 = 不限
+#   title_min_chars   int   与 title_max_chars **同时为 0** 时跳过标题长度判定
+#   title_max_chars   int
+#   char_count_mode   raw | no_whitespace     缺省 raw；raw 含标点、换行与话题标签
+#
+# 4) **审校清单**（review_checklist）—— P7
+#    消费者是**审校 Agent（review 节点）**。
+#    与 content_contract 的边界（有测试守着，别越界）：
+#      content_contract 管「**有没有**」——字段缺不缺、枚举合不合法、标题是否出现在正文，
+#                        可穷举 → 确定性代码核验（守门层，零 token）。
+#      review_checklist  管「**好不好 / 对不对**」——公式用没用对、风格像不像、配比合不合理，
+#                        需要判断力 → 只能交给审校 Agent 逐项判断。
+#    与守门参数也不重复：守门层管「字数超没超 / 违禁词 / AI 味」，review_checklist 不碰这些。
+#    ⚠️ 因此 review_checklist 里**绝不能出现**「标题 18-20 字」「2-3 大标签 + 3-5 长尾」这类
+#    已被守门层 / 契约层确定性覆盖的项——那是重复核验，两套口径必然打架。
+#    未声明 review_checklist 的渠道退回通用审校（可选字段，不推断不兜底）。
+#
+# 一致性约定（有测试守着）：require_hashtags == (hashtag_style != none)；
+#                            require_emoji    == (emoji_policy != remove)。
 channels:
   xiaohongshu:
     name: 小红书
@@ -11,6 +74,56 @@ channels:
     require_hashtags: true
     require_emoji: true
     seo_keywords: 标题与正文自然植入搜索关键词
+    # --- 结构化守门参数（P5 显式声明）---
+    emoji_policy: cap3
+    # 单井号：小红书平台写法（paired 是微博的写法，之前按 require_hashtags 推断成
+    # paired，属于推断值与平台规范不符——P5 修正）。
+    hashtag_style: hash
+    hashtag_min: 1
+    # 8 = copywriting_guide 的「2-3 个热门大标签 + 3-5 个精准长尾标签」
+    hashtag_max: 8
+    title_min_chars: 18
+    title_max_chars: 20
+    char_count_mode: raw
+    # --- 内容契约（P6）---
+    # 小红书的结构是「钩子 → 场景 → 体验 → 分层标签」。这些 guide 里都写了，
+    # 但此前没有任何机制核验模型有没有照做；这里逐项落成可核验的要求。
+    content_contract:
+      - field: hook_type
+        kind: enum
+        label: 开头钩子类型
+        values: [场景痛点, 反常识, 数字对比, 用户提问, 结论前置, 后悔没早买, 真实体验, 平替避坑]
+      - field: scenario
+        kind: text
+        label: 场景/痛点切入
+      - field: experience_detail
+        kind: text
+        label: 使用体验细节
+      - field: selling_points
+        kind: list
+        label: 核心卖点
+        min: 3
+        max: 5
+      - field: tags_by_tier
+        kind: tiered
+        label: 分层话题标签
+        # 标签的**唯一来源**：由守门层按 hot → longtail 顺序扁平化写入 hashtags。
+        # 这样「2-3 个大标签 + 3-5 个长尾标签」才真的可核验，
+        # 也不会出现「hashtags 与分层结果两处打架」。
+        feeds: hashtags
+        tiers:
+          - {key: hot, label: 热门大标签, min: 2, max: 3}
+          - {key: longtail, label: 精准长尾标签, min: 3, max: 5}
+      - field: cta
+        kind: text
+        label: 行动号召
+    # --- 审校清单（P7）---
+    # 判断力项（公式/风格/配比），交给审校 Agent 逐项核对；与 content_contract、守门参数不重叠。
+    review_checklist:
+      - 标题是否命中「关键词 + 情绪触发词」，并用了公式（后悔没早买式 / 真实体验式 / 平替避坑式）
+      - 正文是否按「痛点共鸣 → 自然引入 → 具体体验 → 总结推荐」的节奏展开
+      - 是否「真实声音不企业腔」，像朋友分享而非硬广
+      - 内容配比是否接近 70% 生活方式 / 20% 趋势参与 / 10% 品牌直推
     copywriting_guide:
       title_rule: 标题 18-20 字，含关键词 + 情绪触发词。可用公式：后悔没早买式、真实体验式（用了30天）、平替避坑式（别再交智商税了）
       body_structure: 300-600 字四段式：痛点共鸣（1-2句，让读者觉得说的就是我）→ 产品/方案自然引入（不突兀）→ 使用体验/效果（具体、有细节、有数据）→ 总结推荐（适当降低期望更真实）
@@ -26,6 +139,48 @@ channels:
     require_hashtags: false
     require_emoji: false
     seo_keywords: 标题优化与文中关键词覆盖
+    # --- 结构化守门参数（P5 显式声明）---
+    emoji_policy: remove
+    hashtag_style: none
+    hashtag_min: 0
+    hashtag_max: 0
+    # 公众号正文里没有独立标题字段；title 是群发标题，上限 64 字（公众平台编辑器 0/64 计数）。
+    title_min_chars: 0
+    title_max_chars: 64
+    char_count_mode: raw
+    # --- 内容契约（P6）---
+    # 公众号是「结构 + 依据 + 结论」的长文。guide 只给了风格与目标（读完率），
+    # 这里给出可核验的骨架，防止「写了三段标题、正文只有一段」。
+    content_contract:
+      - field: outline
+        kind: list
+        label: 内容大纲
+        min: 3
+        max: 5
+      - field: section_headings
+        kind: headings
+        label: 小节标题
+        # 每个小标题都必须真的出现在正文里 —— 这条正是「大纲写了、正文没写」的解药。
+        min: 2
+      - field: key_takeaway
+        kind: text
+        label: 一句话结论
+      - field: evidence_refs
+        kind: list
+        label: 依据/案例
+        # 只要求非空。**没有外部依据时必须如实写「暂无外部依据」**：
+        # 「必须有依据」与「不许编造」同时成立时，诚实的占位是唯一合法解
+        # （本项目的「事实账本」原则优先于凑满字段）。
+        min: 1
+      - field: cta
+        kind: text
+        label: 行动号召
+    # --- 审校清单（P7）---
+    review_checklist:
+      - 标题是否有冲击力并带情感钩子
+      - 开头是否用情感钩子抓住读者，而非平铺直叙
+      - 是否「数据与案例 > 观点和说教」
+      - 排版是否可扫读（要点列表、标题分级、视觉层次）
     copywriting_guide:
       title_rule: 有冲击力的标题 + 情感钩子（打开率翻倍的关键）；标题与正文布局搜索关键词
       body_structure: 逻辑清楚、要点列表、可扫读排版；标题分级、视觉层次分明；以读完率>50% 为目标
@@ -39,6 +194,38 @@ channels:
     require_hashtags: true
     require_emoji: true
     seo_keywords: 核心关键词前置
+    # --- 结构化守门参数（P5 显式声明）---
+    emoji_policy: cap3
+    # 成对写法的依据：微博话题必须 #话题# 成对才生效（对不上不是话题，只是井号）。
+    hashtag_style: paired
+    hashtag_min: 1
+    # 4 = 创作提示词里的「附 2-4 个相关话题标签」
+    hashtag_max: 4
+    # 微博没有独立标题字段（title 是模型给的短标题），不做长度判定。
+    title_min_chars: 0
+    title_max_chars: 0
+    char_count_mode: raw
+    # --- 内容契约（P6）---
+    # 微博本来就有专属输出 schema（钩子/推理链/事实引用），但约束只活在提示词里。
+    # 显式声明后，「模型有没有按 schema 填」可被核验，而不是靠自觉。
+    content_contract:
+      - field: hook_type
+        kind: enum
+        label: 钩子类型
+        values: [场景痛点, 用户提问, 数字对比, 结论前置, 反常识]
+      - field: reasoning_chain
+        kind: text
+        label: 推理链（现象-机制-动作-指标）
+      - field: proof_used
+        kind: list
+        label: 使用到的输入事实
+        min: 1
+    # --- 审校清单（P7）---
+    review_checklist:
+      - 是否「一句话钩子先行」（争议性 / 情绪共鸣）
+      - 是否命中传播公式（争议性 × 参与门槛低 × 情绪共鸣）
+      - 是否引导转发 / 评论，而非只求点赞
+      - 信息密度是否高、有无网感
     copywriting_guide:
       title_rule: 一句话钩子先行（争议性/情绪共鸣），核心信息紧随
       body_structure: 传播公式：争议性 × 参与门槛低 × 情绪共鸣；引导转发和评论（转发评论比点赞更有传播价值）
@@ -57,6 +244,41 @@ channels:
     require_hashtags: false
     require_emoji: false
     seo_keywords: 商品关键词覆盖与转化话术
+    # --- 结构化守门参数（P5 显式声明）---
+    emoji_policy: remove
+    hashtag_style: none
+    hashtag_min: 0
+    hashtag_max: 0
+    # 详情页主标题没有平台字数口径，guide 只给公式不给字数，不判定。
+    title_min_chars: 0
+    title_max_chars: 0
+    char_count_mode: raw
+    # --- 内容契约（P6）---
+    # 产品页本来就要求 FAB 四段式卖点与规格说明，但约束只在提示词里。
+    # 声明成契约后，「卖点少写一条」「FAB 缺 proof」都会被核验出来。
+    content_contract:
+      - field: selling_points
+        kind: list
+        label: 核心卖点（FAB）
+        min: 3
+        max: 5
+        item_fields: [label, feature, advantage, benefit, proof]
+      - field: specifications
+        kind: list
+        label: 规格说明
+        min: 1
+      - field: trust_badges
+        kind: list
+        label: 信任背书
+        min: 1
+      - field: cta
+        kind: text
+        label: 行动号召
+    # --- 审校清单（P7）---
+    review_checklist:
+      - 标题是否命中公式 [品牌] + [核心关键词] + [属性] + [卖点] + [场景]
+      - 是否每段只讲一个利益点，不堆砌卖点
+      - 是否转化导向、事实优先，无虚构价格锚点或社交证明
     copywriting_guide:
       title_rule: 标题公式 = [品牌] + [核心关键词] + [属性] + [卖点] + [场景]
       body_structure: 核心卖点 Banner（3 秒内抓住注意力）→ 核心卖点 3-5 条（特性→优势→用户利益）→ 适用场景 → 已知规格与待补充项 → 有依据的信任说明 → 行动号召

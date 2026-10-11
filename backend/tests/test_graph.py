@@ -80,7 +80,8 @@ def test_pipeline_interrupts_at_human_confirm(tmp_path):
     assert result["review"]["passed"] is True
     assert result["stage_status"] == {
         "research": "completed", "competitor": "completed", "strategy": "completed",
-        "copywriting": "completed", "review": "completed",
+        "copywriting": "completed", "humanize": "skipped", "guardrail": "completed",
+        "review": "completed",
     }
     assert fake.calls == 5
 

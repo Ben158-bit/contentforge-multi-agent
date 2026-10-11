@@ -2,7 +2,7 @@
 
 数据模型（业务表 + 迁移版本表）：
 - projects     项目（营销任务的分组）
-- tasks        营销任务（主题、渠道、状态、成本统计、可选关联品牌）
+- tasks        营销任务（主题、渠道、状态、失败原因、成本统计、可选关联品牌）
 - stages       流水线阶段（5 个 agent 阶段的执行状态与产出）
 - artifacts    最终工件（各渠道文案变体，支持人工编辑）
 - brands       品牌档案（记忆层·显式记忆）
@@ -20,6 +20,7 @@ from pathlib import Path
 import aiosqlite
 
 from .config import get_settings
+from .db_anchor import hold as hold_anchor
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,14 @@ MIGRATIONS: list[tuple[str, list[str]]] = [
             "ALTER TABLE brand_preferences ADD COLUMN strength REAL NOT NULL DEFAULT 1.0",
         ],
     ),
+    (
+        # 失败原因可见：此前任务失败只写日志，前端只能显示一个「失败」，
+        # 用户无从判断是配置问题、模型问题还是存储问题。
+        "v4",
+        [
+            "ALTER TABLE tasks ADD COLUMN error TEXT NOT NULL DEFAULT ''",
+        ],
+    ),
 ]
 
 
@@ -161,6 +170,9 @@ async def get_conn(db_path: Path | None = None) -> aiosqlite.Connection:
     """打开数据库连接（Row 工厂），调用方负责关闭。"""
     path = db_path or default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    # 进程级保活连接：防止最后一个连接关闭时 SQLite 删除 WAL 旁路文件，
+    # 进而让并发的新连接撞上 SQLITE_READONLY（详见 db_anchor.py）。
+    hold_anchor(path)
     conn = await aiosqlite.connect(str(path))
     conn.row_factory = aiosqlite.Row
     return conn

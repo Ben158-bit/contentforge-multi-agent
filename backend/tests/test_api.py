@@ -107,7 +107,9 @@ def test_task_full_flow(tmp_path):
         detail = _wait_status(client, task_id, "waiting_human")
         stage_status = {s["stage_key"]: s["status"] for s in detail["stages"]}
         assert set(stage_status) == {"research", "competitor", "strategy",
-                                     "copywriting", "review"}
+                                     "copywriting", "humanize", "guardrail", "review"}
+        # 去 AI 味仅对公众号启用：小红书任务下该阶段「跳过」而不是「完成」
+        assert stage_status.pop("humanize") == "skipped"
         assert all(v == "completed" for v in stage_status.values())
         assert detail["total_cost"] > 0
         assert detail["stages"][0]["output"]["summary"] == "s"
@@ -361,6 +363,53 @@ def test_rerun_returns_immediately(tmp_path):
         assert rerun.status_code == 200
         assert elapsed < 1.0, f"rerun 阻塞了 {elapsed:.2f}s"
         _wait_status(client, task_id, "waiting_human", timeout=30)
+
+
+def test_change_task_channel(tmp_path):
+    """任务页切换渠道：更新 channel_id 并按新渠道整条重跑。
+
+    校验四件事：① 切换后渠道字段真的变了；② 接口立即返回、重跑在后台完成；
+    ③ 未知渠道 400；④ 渠道未变化时不触发重跑（幂等）。
+    """
+    graph = build_graph(SlowLLM(), db_path=tmp_path / "ckpt.db")
+    with TestClient(app) as client:
+        app.state.graph = graph
+        resp = client.post("/api/tasks", json={
+            "topic": "智能保温杯", "channel_id": "xiaohongshu", "brand_name": "暖芯",
+        })
+        assert resp.status_code == 201
+        task_id = resp.json()["id"]
+        _wait_status(client, task_id, "waiting_human", timeout=30)
+
+        # 未知渠道 → 400
+        assert client.put(
+            f"/api/tasks/{task_id}/channel", json={"channel_id": "douyin"}
+        ).status_code == 400
+
+        # 渠道未变化 → 200 且不重跑（状态保持 waiting_human）
+        same = client.put(f"/api/tasks/{task_id}/channel", json={"channel_id": "xiaohongshu"})
+        assert same.status_code == 200
+        assert same.json()["channel_id"] == "xiaohongshu"
+        assert same.json()["status"] == "waiting_human"
+
+        # 切换到微博：立即返回，后台按新渠道重跑到人工确认
+        start = time.time()
+        changed = client.put(f"/api/tasks/{task_id}/channel", json={"channel_id": "weibo"})
+        elapsed = time.time() - start
+        assert changed.status_code == 200
+        assert changed.json()["channel_id"] == "weibo"
+        assert elapsed < 1.0, f"渠道切换阻塞了 {elapsed:.2f}s"
+
+        done = _wait_status(client, task_id, "running", timeout=15)
+        assert done["channel_id"] == "weibo"
+        # 后台按新渠道重跑到人工确认（重跑后产出已重新生成）
+        _wait_status(client, task_id, "waiting_human", timeout=30)
+
+
+def test_change_channel_on_missing_task_returns_404():
+    with TestClient(app) as client:
+        resp = client.put("/api/tasks/999999999/channel", json={"channel_id": "weibo"})
+        assert resp.status_code == 404
 
 
 def test_concurrent_tasks_finish_under_semaphore(tmp_path):

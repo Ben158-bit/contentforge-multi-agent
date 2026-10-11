@@ -86,9 +86,15 @@ async def test_upgrade_from_legacy_schema():
     finally:
         conn.close()
 
-    assert versions == ["v1", "v2", "v3"], f"旧记录应迁移为 v1 且 v2/v3 已应用，实际 {versions}"
+    # 期望版本集合从 MIGRATIONS 派生：新增迁移不必回来改测试，
+    # 这里只负责「旧库升级后版本记录完整」这件事。
+    expected_versions = [version for version, _ in db.MIGRATIONS]
+    assert versions == expected_versions, (
+        f"旧记录应迁移为 v1 且全部迁移已应用，实际 {versions}"
+    )
     assert brands is not None and prefs is not None  # v2 新表已创建
     assert "brand_id" in task_cols  # v2 新列已添加
+    assert "error" in task_cols  # v4 失败原因列已添加
     assert task_count == 1  # 旧业务数据保留
     assert "version text primary key" in " ".join(mig_ddl.split()).lower()  # 表结构已重建为 TEXT
 
@@ -131,3 +137,23 @@ async def test_v3_feedback_tables():
     assert "source" in pref_cols and "strength" in pref_cols
     assert "content_feedback" in tbls
     assert "content_id" in fb_cols and "is_simulated" in fb_cols
+
+
+async def test_v4_task_error_column():
+    """v4 迁移：tasks 增加 error 列（失败原因可见，默认空串）。"""
+    path = Path(tempfile.mkdtemp(prefix="contentforge-v4-")) / "new.db"
+    await db.init_db(path)
+
+    conn = sqlite3.connect(path)
+    try:
+        cols = {r[1]: r for r in conn.execute("PRAGMA table_info(tasks)")}
+        conn.execute(
+            "INSERT INTO tasks (topic, channel_id) VALUES (?, ?)", ("保温杯", "wechat")
+        )
+        conn.commit()
+        error = conn.execute("SELECT error FROM tasks").fetchone()[0]
+    finally:
+        conn.close()
+
+    assert "error" in cols
+    assert error == "", "已有行应回落到空串，而不是 NULL"

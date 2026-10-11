@@ -3,9 +3,13 @@
 设计说明：
 - LangGraph 0.6.x 在 Python 3.10 下 interrupt 仅支持同步执行路径，
   因此 runner 用同步 graph.stream 逐步推进，并同步回写数据库。
-- 同步回写使用标准库 sqlite3 直连（数据库为 WAL 模式），与事件循环中
-  aiosqlite 连接并发安全。
+- 同步回写使用标准库 sqlite3 直连，与事件循环中的 aiosqlite 连接**并发读写同一
+  WAL 库**。二者并发安全的前提是进程内持有 `db_anchor` 的保活连接——否则会在
+  「最后一个连接关闭即删除 WAL 旁路文件」的窗口里撞上 SQLITE_READONLY。
+  详见 `app/db_anchor.py` 的故障复盘。
 - 执行入口在 FastAPI 中通过 asyncio.to_thread 隔离，避免阻塞事件循环。
+- **状态写入本身也会失败**，所以「置 failed」必须走 `_mark_failed`（不再抛异常），
+  否则任务会永久停在 pending/running，用户既看不到失败也重跑不了。
 """
 from __future__ import annotations
 
@@ -27,22 +31,49 @@ from ..db_sql import (
     upsert_stage as _upsert_stage,
 )
 from ..memory import learn_from_confirmation
-from .graph import thread_id_for, update_pipeline_state
-from .nodes import STAGE_KEYS
+from .graph import (
+    definition_editable_stages,
+    definition_stage_keys,
+    thread_id_for,
+    update_pipeline_state,
+)
 
 logger = logging.getLogger(__name__)
 
-# 上游阶段：编辑后会影响下游文案生成，confirm 时需回填并重跑下游
-UPSTREAM_STAGE_KEYS = ["research", "competitor", "strategy"]
+# 失败原因入库时的长度上限（避免把整段堆栈塞进一行展示）
+MAX_ERROR_CHARS = 500
 
 
-def _write_chunk(task_id: int, chunk: dict) -> None:
+def _error_text(exc: BaseException | None) -> str:
+    """把异常压成一行可展示的原因。"""
+    if exc is None:
+        return ""
+    return f"{type(exc).__name__}: {exc}".strip()[:MAX_ERROR_CHARS]
+
+
+def _mark_failed(task_id: int, exc: BaseException | None = None, *, reason: str = "") -> None:
+    """把任务置为 failed 并记录原因。
+
+    **本函数自身绝不抛异常**：状态写入失败是真实存在的（首次发现这个 bug 时，
+    异常处理里那次 `UPDATE tasks SET status='failed'` 同样失败，
+    结果任务永远停在 pending）。写不进去至少要让日志说清楚。
+    """
+    error = reason or _error_text(exc)
+    try:
+        _update_task(task_id, status="failed", error=error)
+    except Exception:
+        logger.exception("任务 %s 置为 failed 失败，任务状态可能残留", task_id)
+        return
+    logger.info("任务 %s 已置为 failed（原因：%s）", task_id, error or "未记录")
+
+
+def _write_chunk(task_id: int, chunk: dict, stage_keys: list[str]) -> None:
     """把 graph.stream 产出的节点更新写入 DB（每阶段实时进度）。"""
     for node_name, updates in chunk.items():
         if node_name == "__interrupt__":
             _update_task(task_id, status="waiting_human")
             continue
-        if node_name in STAGE_KEYS:
+        if node_name in stage_keys:
             status = updates.get("stage_status", {}).get(node_name, "completed")
             output = json.dumps(updates.get(node_name, {}), ensure_ascii=False)
             new_total = updates.get("total_cost")
@@ -73,19 +104,31 @@ def _write_chunk(task_id: int, chunk: dict) -> None:
                 logger.info("任务 %s 阶段[%s]完成", task_id, node_name)
 
 
-def _load_edited_upstream_values(task_id: int) -> tuple[dict | None, str | None]:
-    """读取被人工编辑的上游阶段（research/competitor/strategy）产出。
+def _load_edited_upstream_values(
+    task_id: int, upstream_keys: list[str]
+) -> tuple[dict | None, str | None]:
+    """读取被人工编辑的上游阶段产出。
+
+    Args:
+        upstream_keys: 可编辑的上游阶段 key（由流水线定义提供），顺序即
+            「最早被编辑的阶段」判定顺序。
 
     Returns:
         (values, earliest)：values 为可写回 checkpoint 的编辑值（stage_key -> dict），
         earliest 为最早被编辑的阶段 key（按流水线顺序），无编辑时为 (None, None)。
     """
+    if not upstream_keys:
+        return None, None
+
+    # 占位符由 key 数量生成、值走参数绑定；key 本身已被定义校验器限定为
+    # [a-z][a-z0-9_]*，不存在注入面。
+    placeholders = ", ".join("?" for _ in upstream_keys)
     conn = _sync_conn()
     try:
         rows = conn.execute(
             "SELECT stage_key, status, output FROM stages "
-            "WHERE task_id = ? AND stage_key IN ('research', 'competitor', 'strategy')",
-            (task_id,),
+            f"WHERE task_id = ? AND stage_key IN ({placeholders})",
+            (task_id, *upstream_keys),
         ).fetchall()
     finally:
         conn.close()
@@ -93,7 +136,7 @@ def _load_edited_upstream_values(task_id: int) -> tuple[dict | None, str | None]
     by_key = {r["stage_key"]: r for r in rows}
     values: dict = {}
     earliest: str | None = None
-    for key in UPSTREAM_STAGE_KEYS:
+    for key in upstream_keys:
         row = by_key.get(key)
         if row is None or row["status"] != "edited":
             continue
@@ -120,14 +163,17 @@ def run_task_pipeline(graph, task_id: int, initial_state: dict) -> str:
     Returns:
         任务最终状态（'waiting_human' 或 'failed'）。
     """
-    _update_task(task_id, status="running")
     cfg = {"configurable": {"thread_id": thread_id_for(task_id)}}
+    stage_keys = definition_stage_keys(graph)
     try:
+        # 「置 running」也放进 try：它是一次真实的数据库写入，同样会失败。
+        # 放在 try 之外时，一旦失败任务就永久停在 pending（看门狗只看 running）。
+        _update_task(task_id, status="running", error="")
         for chunk in graph.stream(initial_state, cfg):
-            _write_chunk(task_id, chunk)
-    except Exception:
+            _write_chunk(task_id, chunk, stage_keys)
+    except Exception as exc:
         logger.exception("任务 %s 流水线执行失败", task_id)
-        _update_task(task_id, status="failed")
+        _mark_failed(task_id, exc)
         return "failed"
     _update_task(task_id, status="waiting_human")
     return "waiting_human"
@@ -168,32 +214,33 @@ def confirm_pipeline(graph, task_id: int, confirmation: dict) -> str:
         _insert_artifact(task_id, "copywriting", i, v)
 
     cfg = {"configurable": {"thread_id": thread_id_for(task_id)}}
+    stage_keys = definition_stage_keys(graph)
 
     # 1. 上游编辑回填：编辑真正生效（从最早编辑阶段之后重跑下游）
-    values, earliest = _load_edited_upstream_values(task_id)
+    values, earliest = _load_edited_upstream_values(task_id, definition_editable_stages(graph))
     if earliest and values:
         update_pipeline_state(graph, task_id, values, as_node=earliest)
         _mark_upstream_applied(task_id, list(values.keys()))
-        _update_task(task_id, status="running")
         try:
+            _update_task(task_id, status="running", error="")
             for chunk in graph.stream(None, cfg):
-                _write_chunk(task_id, chunk)
-        except Exception:
+                _write_chunk(task_id, chunk, stage_keys)
+        except Exception as exc:
             logger.exception("任务 %s 编辑回填后重跑下游失败", task_id)
-            _update_task(task_id, status="failed")
+            _mark_failed(task_id, exc)
             return "failed"
         # 重跑下游后再次到达人工确认点，等待用户对新文案确认
         _update_task(task_id, status="waiting_human")
         return "waiting_human"
 
     # 2. 无上游编辑：正常恢复执行到完成
-    _update_task(task_id, status="running")
     try:
+        _update_task(task_id, status="running", error="")
         for chunk in graph.stream(Command(resume=confirmation), cfg):
-            _write_chunk(task_id, chunk)
-    except Exception:
+            _write_chunk(task_id, chunk, stage_keys)
+    except Exception as exc:
         logger.exception("任务 %s 确认恢复失败", task_id)
-        _update_task(task_id, status="failed")
+        _mark_failed(task_id, exc)
         return "failed"
     # 汇总任务级统计
     snap = graph.get_state(cfg)
@@ -214,7 +261,7 @@ def rerun_pipeline(graph, task_id: int, initial_state: dict) -> str:
     except Exception:
         logger.warning("任务 %s 清理 checkpoint 失败，继续重跑", task_id)
     _clear_artifacts(task_id)
-    for key in STAGE_KEYS:
+    for key in definition_stage_keys(graph):
         _upsert_stage(task_id, key, status="pending", output="", feedback="",
                       revision_round=0, cost=0, latency=0)
     return run_task_pipeline(graph, task_id, initial_state)
@@ -223,7 +270,12 @@ def rerun_pipeline(graph, task_id: int, initial_state: dict) -> str:
 # ===================== 可靠性：看门狗与启动恢复 =====================
 
 def fail_stale_running_tasks(deadline_minutes: int) -> int:
-    """把超过 deadline 仍未推进的 running 任务置 failed，返回处理数量。"""
+    """把超过 deadline 仍未推进的 running 任务置 failed，返回处理数量。
+
+    **不含 pending**：任务在进程内排队等 `_task_slots` 信号量时状态就是 pending，
+    那是合法状态（并发上限 3 下，排队十几分钟并非异常）。真正孤儿化的 pending
+    只出现在「进程重启」这一场景，由 `recover_running_tasks` 处理。
+    """
     conn = _sync_conn()
     try:
         rows = conn.execute(
@@ -235,35 +287,46 @@ def fail_stale_running_tasks(deadline_minutes: int) -> int:
         conn.close()
     for row in rows:
         logger.warning("任务 %s 超过任务级 deadline，置为 failed", row["id"])
-        _update_task(row["id"], status="failed")
+        _mark_failed(row["id"], reason=f"超过任务级 deadline（{deadline_minutes} 分钟内无进展）")
     return len(rows)
 
 
 def recover_running_tasks() -> int:
-    """启动恢复：处理进程重启遗留的 running 任务。
+    """启动恢复：处理进程重启遗留的 running / pending 任务。
 
     规则（近似 checkpoint 语义）：
+    - **pending** → failed。任务已建但流水线从未启动（进程在中间挂掉），
+      checkpoint 里没有状态，恢复成 waiting_human 是错的；置 failed 让用户可 rerun。
+      （进程存活期间的 pending 是合法的排队状态，不在此处理。）
     - review 阶段已完成 → 流水线已到人工确认点（human_confirm 前后崩溃）
       → 恢复为 waiting_human（用户可再次确认）
     - 否则 → 执行中崩溃，置 failed（用户可 rerun 重试）
     """
     conn = _sync_conn()
     try:
-        rows = conn.execute("SELECT id FROM tasks WHERE status = 'running'").fetchall()
-        result = []
+        rows = conn.execute(
+            "SELECT id, status FROM tasks WHERE status IN ('running', 'pending')"
+        ).fetchall()
+        result: list[tuple[int, str, str]] = []
         for row in rows:
-            task_id = row["id"]
+            task_id, prev = row["id"], row["status"]
+            if prev == "pending":
+                result.append((task_id, "failed", "服务重启时任务尚未开始执行"))
+                continue
             review = conn.execute(
                 "SELECT status FROM stages WHERE task_id = ? AND stage_key = 'review'",
                 (task_id,),
             ).fetchone()
             if review is not None and review["status"] == "completed":
-                result.append((task_id, "waiting_human"))
+                result.append((task_id, "waiting_human", ""))
             else:
-                result.append((task_id, "failed"))
+                result.append((task_id, "failed", "服务重启时任务正在执行，可从检查点重跑"))
     finally:
         conn.close()
-    for task_id, status in result:
-        logger.info("启动恢复：任务 %s 遗留 running → %s", task_id, status)
-        _update_task(task_id, status=status)
+    for task_id, status, reason in result:
+        logger.info("启动恢复：任务 %s 遗留 → %s", task_id, status)
+        if status == "failed":
+            _mark_failed(task_id, reason=reason)
+        else:
+            _update_task(task_id, status=status)
     return len(result)

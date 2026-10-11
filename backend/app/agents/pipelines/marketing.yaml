@@ -1,0 +1,178 @@
+# 营销内容生产流水线定义
+#
+# 节点实现都在 agents/nodes/，本文件只声明**它们是哪些、按什么顺序连**。
+# 加一条流水线 = 加一个 YAML，不需要改 runner。
+#
+# kind 的三种取值：
+#   agent      —— LLM 节点（需 prompt_key，消耗 token）
+#   step       —— 确定性步骤（不调模型，同输入必同输出；不写 prompt_key）
+#   human_gate —— 人工闸门（interrupt 暂停）
+#
+# ⚠️ 行为影响：改动本文件会直接改变线上流水线行为。
+#    修改前请先跑 `pytest tests/test_pipeline_definition.py tests/test_graph.py`
+#    tests/test_nodes.py tests/test_demo_mode.py`。
+pipeline_id: marketing
+version: 3
+description: 调研 → 竞品 → 策略 → 创作 → 去 AI 味（仅公众号） → 守门（确定性） → 审校（可打回） → 人工确认
+
+# 人工确认闸门（human-in-the-loop，通过 interrupt 暂停等待人工确认/编辑）
+human_gate: human_confirm
+
+# 终止目标：本流水线成功与失败都汇入 END。
+# 失败不走图上的边 —— 节点抛异常由 runner 捕获并把任务置为 failed，
+# 因此 failure_target 是「文档性声明」，不会生成一条指向它的边。
+success_target: END
+failure_target: END
+
+# 允许人工编辑、编辑后需重跑下游的阶段（runner 用它决定回填范围）。
+# 顺序即「最早被编辑的阶段」判定顺序。
+# 判据是**产出即交付物**：确定性步骤（守门层）与「产出是处置报告」的
+# humanize 都不列 —— 手改前者无意义且会被下次执行覆盖，
+# 手改后者根本不会回填，只会制造一个静默失效的编辑入口。
+upstream_editable_stages:
+  - research
+  - competitor
+  - strategy
+
+nodes:
+  # ---------------- 5 个创作阶段 ----------------
+  - key: research
+    label: 市场调研
+    kind: agent
+    is_stage: true
+    description: 目标人群 / 痛点 / 趋势 / 关键词；配置联网搜索时注入真实来源
+    contract:
+      factory: make_research_node
+      state_key: research
+      prompt_key: research
+    temperature: 0.5
+    max_retries: 0
+    inputs: [input]
+    outputs: [research, stage_status, total_cost, total_latency]
+
+  - key: competitor
+    label: 竞品分析
+    kind: agent
+    is_stage: true
+    description: 竞品定位、卖点、内容策略，以及与自身的机会缺口
+    contract:
+      factory: make_competitor_node
+      state_key: competitor
+      prompt_key: competitor
+    temperature: 0.5
+    max_retries: 0
+    inputs: [input, research]
+    outputs: [competitor, stage_status, total_cost, total_latency]
+
+  - key: strategy
+    label: 策略制定
+    kind: agent
+    is_stage: true
+    description: 目标受众、核心价值主张、关键信息、语气与内容角度
+    contract:
+      factory: make_strategy_node
+      state_key: strategy
+      prompt_key: strategy
+    temperature: 0.5
+    max_retries: 0
+    inputs: [input, research, competitor]
+    outputs: [strategy, stage_status, total_cost, total_latency]
+
+  - key: copywriting
+    label: 文案创作
+    kind: agent
+    is_stage: true
+    description: 按渠道模板产出多变体文案；审校打回时带 feedback 重写，并注入品牌记忆
+    contract:
+      factory: make_copywriting_node
+      state_key: copywriting
+      prompt_key: copywriting
+    temperature: 0.8
+    max_retries: 0
+    # review_feedback / revision_round 由下游 review 产出 —— 这是审校回路的
+    # 回边输入，因此「输入必须有人产出」的校验只要求「存在产出者」，不要求先于本节点
+    inputs: [input, brand_id, research, competitor, strategy, review_feedback, revision_round]
+    outputs: [copywriting, stage_status, total_cost, total_latency]
+
+  - key: humanize
+    label: 去 AI 味
+    kind: agent
+    is_stage: true
+    # 产出是「改写处置报告」，真正生效的是它回写的 copywriting ——
+    # 开放编辑入口只会得到一个存了但不会回填的静默失效编辑，故显式关掉。
+    editable: false
+    description: 仅公众号：确定性预扫 → Agent 改写 → 确定性复扫 → 验收判定；未通过则保留原文
+    contract:
+      factory: make_humanize_node
+      state_key: humanize
+      prompt_key: humanize
+    temperature: 0.4
+    max_retries: 0
+    # 读创作产出（回写同一通道）；非公众号渠道直接跳过，不消耗 token
+    inputs: [input, copywriting]
+    outputs: [humanize, copywriting, stage_status, total_cost, total_latency]
+
+  - key: guardrail
+    label: 质量守门
+    kind: step
+    is_stage: true
+    description: 确定性守门（不调模型）：字数降档、标签规范化、emoji 策略、违禁词与广告法扫描、AI 味检出、标题体检
+    contract:
+      factory: make_guardrail_node
+      state_key: guardrail
+    # 这是 step 而非 agent：不声明 prompt_key。可穷举、要求 100% 复现的规则
+    # 交给工具，需要判断力的（审校、改写）才交给模型。
+    max_retries: 0
+    # 读：任务简报（成稿/素材两个扫描口径）、调研关键词（标题主题匹配）、
+    # 品牌禁用词（brand_id → 品牌档案 taboos）、创作产出（humanize 采纳后的那一份）
+    inputs: [input, brand_id, research, copywriting]
+    outputs: [guardrail, copywriting, needs_human, stage_status]
+
+  - key: review
+    label: 审校优化
+    kind: agent
+    is_stage: true
+    description: 合规与质量审校；不通过则给出 feedback 并递增 revision_round
+    contract:
+      factory: make_review_node
+      state_key: review
+      prompt_key: review
+    temperature: 0.3
+    max_retries: 0
+    # 守门层报告也在提示词里（build_review_messages 读取），
+    # 但那是提示词的内部细节，不算状态契约，故不列为 input
+    inputs: [input, copywriting]
+    outputs: [review, review_feedback, revision_round, stage_status, total_cost, total_latency]
+
+  # ---------------- 人工闸门 ----------------
+  - key: human_confirm
+    label: 人工确认
+    kind: human_gate
+    is_stage: false
+    description: interrupt 暂停，等待人工确认/编辑后以 Command(resume=...) 恢复
+    contract:
+      factory: make_human_confirm_node
+      state_key: confirmed
+    inputs: [task_id, strategy, copywriting, review, guardrail, needs_human]
+    outputs: [confirmed]
+
+edges:
+  - {from: START, to: research}
+  - {from: research, to: competitor}
+  - {from: competitor, to: strategy}
+  - {from: strategy, to: copywriting}
+  - {from: copywriting, to: humanize}
+  - {from: humanize, to: guardrail}
+  - {from: guardrail, to: review}
+
+  # 审校回路：不通过且未达上限 → 打回创作；通过（或达上限）→ 人工确认。
+  # max_rounds_source 只声明「上限从哪读」，上限值本身仍由 Settings 掌管
+  # （测试会 monkeypatch settings.max_revision_rounds），不在这里硬编码。
+  - from: review
+    router: route_after_review
+    max_rounds_source: settings.max_revision_rounds
+    branches:
+      copywriting: copywriting
+      human_confirm: human_confirm
+
+  - {from: human_confirm, to: END}

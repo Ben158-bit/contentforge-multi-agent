@@ -21,6 +21,12 @@ class TaskCreate(BaseModel):
     brand_id: Optional[int] = Field(None, description="关联的品牌档案 id（记忆层，可选）")
 
 
+class TaskChannelUpdate(BaseModel):
+    """任务页切换发布渠道（后端会按新渠道整条重跑流水线）。"""
+
+    channel_id: str = Field(..., description="目标渠道，见 GET /api/channels")
+
+
 class BrandCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     tone: str = Field("", max_length=200, description="品牌调性")
