@@ -5,12 +5,15 @@
 确定性评分。
 
 约定（保证评分器可自动判定）：
-- forbidden_terms:  生成文本（title/body/hashtags/notes 合并文本）中不得出现的字面词。
-- hard_constraints: 生成文本中必须出现的字面短语（至少一个变体命中即可）。
+- forbidden_terms:  **成稿文本**中不得出现的字面词。
+- hard_constraints: **成稿文本**中必须出现的字面短语（至少一个变体命中即可）。
   示例："24 小时保温"、"30 天无理由退换"。
+- 成稿文本 = title + body + hashtags（**不含 notes**——那是模型自述，不对外发布）。
+  该范围与字数口径都由 ``app.guardrails`` 提供，见 ``metrics.py`` 的模块说明。
 - 所有品牌/公司/数据均为虚构，禁止真实客户与真实品牌数据。
 
 本模块为纯 Python + pydantic，不依赖 backend 包，便于独立单测。
+（``metrics.py`` 相反，它**必须**依赖 backend —— 那正是「口径单一真源」的落点。）
 """
 from __future__ import annotations
 

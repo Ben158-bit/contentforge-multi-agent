@@ -7,6 +7,9 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# pytest --basetemp 落到仓库内，避免命中系统临时目录的清理策略
+.pytest_tmp/
+_cf_*.log
 
 # 环境变量与数据
 .env
@@ -19,6 +22,10 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/*.tsbuildinfo
+frontend/vite.config.ts.timestamp-*.mjs
+
+# 临时验证产物（CDP/Chrome 缓存等）
+.tmp_verify/
 
 # IDE / 系统
 .idea/
